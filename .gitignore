@@ -7,3 +7,4 @@ venv/
 .vscode/
 *.db
 *.sqlite3
+lsfiles.txt
