@@ -1,0 +1,9 @@
+{
+  "raw_id": "8151b81f-53fa-4153-a6d6-df12a57e18fe",
+  "received_at": "2026-01-15T22:05:37.411976+00:00",
+  "payload": {
+    "source_type": "av",
+    "format": "cef",
+    "data": "CEF:0|EndpointAV|Vendor|1.0|200|AV_DETECT|7|host=pc7 file=sample.exe action=quarantine"
+  }
+}
