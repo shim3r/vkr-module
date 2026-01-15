@@ -1,0 +1,9 @@
+{
+  "raw_id": "2dadb02e-1cac-423a-8f46-9648820b5bf0",
+  "received_at": "2026-01-15T20:45:43.209084+00:00",
+  "payload": {
+    "source_type": "firewall",
+    "format": "cef",
+    "data": "CEF:0|NGFW|Vendor|1.0|100|ALLOW|8|src=10.0.6.188 dst=10.0.0.1 suser=user5"
+  }
+}

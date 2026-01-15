@@ -1,0 +1,16 @@
+CEF:0|EndpointAV|Vendor|1.0|200|AV_OK|7|host=pc29 file=sample.exe action=quarantine
+CEF:0|EndpointAV|Vendor|1.0|200|AV_OK|7|host=pc2 file=sample.exe action=quarantine
+CEF:0|EndpointAV|Vendor|1.0|200|AV_OK|7|host=pc4 file=sample.exe action=quarantine
+CEF:0|EndpointAV|Vendor|1.0|200|AV_OK|7|host=pc20 file=sample.exe action=quarantine
+CEF:0|EndpointAV|Vendor|1.0|200|AV_OK|7|host=pc13 file=sample.exe action=quarantine
+CEF:0|EndpointAV|Vendor|1.0|200|AV_OK|7|host=pc18 file=sample.exe action=quarantine
+CEF:0|EndpointAV|Vendor|1.0|200|AV_OK|7|host=pc18 file=sample.exe action=quarantine
+CEF:0|EndpointAV|Vendor|1.0|200|AV_OK|7|host=pc24 file=sample.exe action=quarantine
+CEF:0|EndpointAV|Vendor|1.0|200|AV_OK|7|host=pc22 file=sample.exe action=quarantine
+CEF:0|EndpointAV|Vendor|1.0|200|AV_DETECT|7|host=pc13 file=sample.exe action=quarantine
+CEF:0|EndpointAV|Vendor|1.0|200|AV_OK|7|host=pc14 file=sample.exe action=quarantine
+CEF:0|EndpointAV|Vendor|1.0|200|AV_OK|7|host=pc26 file=sample.exe action=quarantine
+CEF:0|EndpointAV|Vendor|1.0|200|AV_OK|7|host=pc19 file=sample.exe action=quarantine
+CEF:0|EndpointAV|Vendor|1.0|200|AV_OK|7|host=pc16 file=sample.exe action=quarantine
+CEF:0|EndpointAV|Vendor|1.0|200|AV_OK|7|host=pc1 file=sample.exe action=quarantine
+CEF:0|EndpointAV|Vendor|1.0|200|AV_OK|7|host=pc22 file=sample.exe action=quarantine
