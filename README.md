@@ -30,8 +30,9 @@ cd ~/Desktop/vkr-module
 source .venv/bin/activate
 python -m uvicorn app.main:app --reload
 ```
+### Структура проекта
 
-```Структура проекта
+```
 app/
   main.py                 # FastAPI приложение
   api/
