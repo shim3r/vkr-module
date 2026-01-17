@@ -9,3 +9,5 @@ venv/
 *.sqlite3
 lsfiles.txt
 .DS_Store
+data/raw/*
+!data/raw/.gitkeep

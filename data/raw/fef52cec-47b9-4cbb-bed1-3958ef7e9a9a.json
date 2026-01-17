@@ -1,9 +1,0 @@
-{
-  "raw_id": "fef52cec-47b9-4cbb-bed1-3958ef7e9a9a",
-  "received_at": "2026-01-15T20:45:38.599129+00:00",
-  "payload": {
-    "source_type": "iam",
-    "format": "csv",
-    "data": "2026-01-15T20:45:38.592888+00:00,user1,GROUP_ADD,ip=10.0.8.30"
-  }
-}

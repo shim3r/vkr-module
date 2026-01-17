@@ -1,9 +1,0 @@
-{
-  "raw_id": "eede2f36-5dd7-4493-b566-6c0447ebf4f0",
-  "received_at": "2026-01-15T15:36:00.760529+00:00",
-  "payload": {
-    "source_type": "firewall",
-    "format": "cef",
-    "data": "CEF:0|NGFW|Vendor|1.0|100|VPN_LOGIN_FAIL|8|src=10.0.0.9 dst=10.0.0.1 suser=user1"
-  }
-}

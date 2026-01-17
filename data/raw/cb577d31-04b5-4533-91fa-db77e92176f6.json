@@ -1,9 +1,0 @@
-{
-  "raw_id": "cb577d31-04b5-4533-91fa-db77e92176f6",
-  "received_at": "2026-01-15T21:08:01.297044+00:00",
-  "payload": {
-    "source_type": "firewall",
-    "format": "cef",
-    "data": "CEF:0|NGFW|Vendor|1.0|101|PORTSCAN|6|src=10.0.0.77 dst=10.0.0.1 dpt=23"
-  }
-}
