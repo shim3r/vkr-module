@@ -44,6 +44,12 @@ class NormalizedEvent(BaseModel):
     host: Optional[str] = None
     user: Optional[str] = None
 
+    # Asset enrichment (CMDB/Asset DB)
+    asset_id: Optional[str] = None
+    asset_criticality: Optional[int] = Field(default=None, ge=1, le=5)
+    asset_owner: Optional[str] = None
+    asset_zone: Optional[str] = None
+
     # ----------------------------
     # Raw / additional data
     # ----------------------------
