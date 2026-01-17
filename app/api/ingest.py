@@ -3,8 +3,26 @@ from app.pipeline.collector import ingest_event
 
 router = APIRouter(tags=["ingest"])
 
-ALLOWED_SOURCES = {"firewall", "av", "edr", "iam", "arm"}
+ALLOWED_SOURCES = {"firewall", "av", "edr", "iam", "arm", "endpoints"}
 ALLOWED_FORMATS = {"cef", "syslog", "json", "csv", "text"}
+
+SOURCE_ALIASES = {
+    # IAM/AD aliases
+    "ad": "iam",
+    "iam/ad": "iam",
+    "active_directory": "iam",
+    # Endpoints/OS logs aliases
+    "endpoint": "endpoints",
+    "os": "endpoints",
+    "os_logs": "endpoints",
+    "windows": "endpoints",
+    "linux": "endpoints",
+}
+
+
+def normalize_source_type(source_type: str) -> str:
+    s = (source_type or "").strip().lower()
+    return SOURCE_ALIASES.get(s, s)
 
 def _validate_source_and_format(source_type: str, fmt: str) -> None:
     if source_type not in ALLOWED_SOURCES:
@@ -18,7 +36,7 @@ async def ingest(payload: dict = Body(...)):
     """
     Универсальная точка входа для одиночных событий (JSON).
     """
-    source_type = (payload.get("source_type") or "").lower()
+    source_type = normalize_source_type(payload.get("source_type") or "")
     fmt = (payload.get("format") or "").lower()
     _validate_source_and_format(source_type, fmt)
     result = await ingest_event(payload)
@@ -33,10 +51,10 @@ async def ingest_file(
 ):
     """
     Загрузка файла логов (для стенда и ВКР).
-    source_type: firewall|av|edr|iam|arm
+    source_type: firewall|av|edr|iam|arm|endpoints
     format: cef|syslog|json|csv|text
     """
-    source_type = source_type.lower()
+    source_type = normalize_source_type(source_type)
     format = format.lower()
     _validate_source_and_format(source_type, format)
 

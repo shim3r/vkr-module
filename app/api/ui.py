@@ -71,12 +71,43 @@ def _safe_list(fn: Optional[Callable[[int], Any]], limit: int) -> list:
 
 @router.get("/api/metrics", include_in_schema=False)
 def api_metrics() -> Dict[str, Any]:
+    # totals
+    events_raw = _safe_count(count_events, list_events)
+    events_aggregated = _safe_count(count_aggregates, None)
+    alerts = _safe_count(count_alerts, list_alerts)
+    incidents = _safe_count(count_incidents, list_incidents)
+
+    # per-source counters (best-effort, based on raw events)
+    by_source: Dict[str, int] = {"firewall": 0, "av": 0, "edr": 0, "iam": 0, "endpoints": 0}
+    if callable(list_events):
+        try:
+            data = list_events(10_000)
+            items = data if isinstance(data, list) else list(data)
+            for e in items:
+                if not isinstance(e, dict):
+                    continue
+                st = str(e.get("source_type") or e.get("source") or "").lower()
+                # normalize common variants
+                if st in ("iam/ad", "iam", "ad", "active_directory"):
+                    st = "iam"
+                if st in ("antivirus", "av"):
+                    st = "av"
+                if st in ("edr", "edr_system"):
+                    st = "edr"
+                if st in ("endpoint", "endpoints", "os", "os_logs"):
+                    st = "endpoints"
+                if st in by_source:
+                    by_source[st] += 1
+        except Exception:
+            pass
+
     return {
-        "events_raw": _safe_count(count_events, list_events),
-        "events_aggregated": _safe_count(count_aggregates, None),
-        "alerts": _safe_count(count_alerts, list_alerts),
-        "incidents": _safe_count(count_incidents, list_incidents),
-        "note": "metrics generated in ui.py (demo)"
+        "events_raw": events_raw,
+        "events_aggregated": events_aggregated,
+        "alerts": alerts,
+        "incidents": incidents,
+        "by_source": by_source,
+        "note": "metrics generated in ui.py"
     }
 
 
@@ -457,27 +488,31 @@ HTML = """<!doctype html>
     /* Actions cell: SIEM-style alignment */
     td.col-actions{
       vertical-align: top;
-      padding: 10px;
+      padding: 12px 10px;        /* space above and below the button */
       display: flex;
-      align-items: stretch;
+      align-items: flex-start;   /* do not stretch the Save button to textarea height */
     }
 
     /* Save button: SIEM-style, visually part of row */
     td.col-actions .tbl-btn{
       width: 100%;
-      height: 100%;
-      min-height: 72px;              /* та же базовая высота, что у comment */
+      height: 36px;              /* real fixed button height */
+      min-height: 36px;
+      max-height: 36px;
+      margin: 0;                 /* spacing handled by td padding */
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 0;
+      padding: 0 18px;           /* horizontal padding only */
       border-radius: 12px;
       background: linear-gradient(135deg, rgba(47,111,237,0.95), rgba(47,111,237,0.70));
       border: 1px solid rgba(47,111,237,0.55);
       color: #ffffff;
-      font-weight: 900;
-      letter-spacing: 0.3px;
+      font-weight: 800;
+      font-size: 20px;           /* normal readable size */
+      letter-spacing: 0.4px;
       box-sizing: border-box;
+      line-height: 1;            /* text fully centered vertically */
     }
     td.col-actions .tbl-btn:hover{
       filter: brightness(1.04);
@@ -496,11 +531,12 @@ HTML = """<!doctype html>
       width: 100%;
       box-sizing: border-box;
       min-width: 0;
-      height: auto;
-      overflow: hidden;
-      min-height: 72px;
+      height: 76px;                 /* fixed height aligned with Save button */
+      min-height: 76px;
+      max-height: 76px;
+      overflow-y: auto;             /* scroll inside if text exceeds */
       line-height: 1.35;
-      resize: vertical;
+      resize: none;                 /* fixed height for table alignment */
       font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
       max-width: 100%;
       min-width: 100%;
@@ -601,7 +637,7 @@ HTML = """<!doctype html>
         <div class="hdr"><b>Источники</b><span>Firewall / AV / EDR / IAM/AD / Endpoints</span></div>
         <div class="body">
           <div class="grid cols-4" id="sourcesCards"></div>
-          <div class="note" style="margin-top:10px;">*Счётчики по источникам можно расширить позже: сейчас они показываются как демо-блок интерфейса, как на примере.</div>
+          
         </div>
       </div>
 
@@ -830,6 +866,19 @@ HTML = """<!doctype html>
               <option value="portscan">Port Scan (T1046)</option>
               <option value="lateral">Lateral Movement (T1021)</option>
               <option value="malware">Malware Detected (T1204)</option>
+              <option value="av_quarantine">AV Quarantine (T1567)</option>
+              <option value="av_clean_fail">AV Clean Failed (T1204)</option>
+              <option value="av_disabled">AV Disabled / Tamper (T1562.001)</option>
+              <option value="edr_suspicious_process">EDR Suspicious Process (T1059)</option>
+              <option value="edr_credential_dump">EDR Credential Dump (T1003)</option>
+              <option value="edr_lateral_tool">EDR Lateral Tool (T1021)</option>
+              <option value="edr_ransomware">EDR Ransomware Behavior (T1486)</option>
+              <option value="iam_password_spray">IAM Password Spray (T1110.003)</option>
+              <option value="iam_auth_success">IAM Auth Success (T1078)</option>
+              <option value="iam_admin_group_change">IAM Admin Group Change (T1098)</option>
+              <option value="endpoint_login_fail">Endpoint Login Fail Burst (T1110)</option>
+              <option value="endpoint_powershell">Endpoint PowerShell Encoded (T1059.001)</option>
+              <option value="endpoint_service_create">Endpoint Service Create (T1543.003)</option>
             </select>
 
             <button class="btn primary" onclick="runAttack()">Start attack</button>
@@ -1098,7 +1147,7 @@ function renderSources(){
           <div class="badge ${badge}">${sev.toUpperCase()}</div>
           <div class="right mono muted" id="src-${s.k}">—</div>
         </div>
-        <div class="note" style="margin-top:10px">Счётчик событий: демо</div>
+        <div class="note" style="margin-top:10px">Счётчик событий</div>
       </div>
     `;
     host.appendChild(div);
@@ -1297,18 +1346,8 @@ function attachEditingGuards(root){
 // ---------------------------
 // Auto-grow for incident comment textarea (SIEM-like UX)
 // ---------------------------
-function autoGrow(el){
-  if(!el) return;
-  el.style.height = 'auto';
-  el.style.height = (el.scrollHeight + 2) + 'px';
-}
-
 function attachAutoGrow(root){
-  if(!root) return;
-  root.querySelectorAll('textarea.tbl-textarea').forEach(t => {
-    autoGrow(t);
-    t.addEventListener('input', ()=> autoGrow(t));
-  });
+  // disabled: fixed-height comment field (76px)
 }
 // ---------------------------
 // Refresh loop
@@ -1330,6 +1369,20 @@ async function refresh(){
     document.getElementById('navKpi').textContent = `${m.alerts ?? 0}/${m.incidents ?? 0}`;
 
     document.getElementById('metricsJson').textContent = JSON.stringify(m, null, 2);
+
+    // Per-source counters (Источники)
+    const bs = (m.by_source || {});
+    const map = {
+      firewall: 'src-firewall',
+      av: 'src-av',
+      edr: 'src-edr',
+      iam: 'src-iam',
+      endpoints: 'src-endpoints'
+    };
+    for(const k of Object.keys(map)){
+      const el = document.getElementById(map[k]);
+      if(el) el.textContent = (bs[k] ?? 0);
+    }
   }else{
     document.getElementById('kpiRaw').textContent = 'N/A';
     document.getElementById('kpiAgg').textContent = 'N/A';

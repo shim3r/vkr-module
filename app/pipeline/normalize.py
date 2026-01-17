@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 import re
 
 from app.schemas.event import NormalizedEvent
@@ -17,11 +17,20 @@ EVENT_TYPE_MAP = {
     "av": {
         "AV_DETECT": ("malware", 9),
         "MALWARE_DETECT": ("malware", 9),
+        "AV_QUARANTINE": ("malware", 6),
+        "AV_CLEAN_FAIL": ("malware", 8),
+        "AV_DISABLED": ("defense_evasion", 9),
     },
     "edr": {
         "PROCESS_START": ("process", 4),
         "NETWORK_CONNECTION": ("network", 5),
         "CREDENTIAL_DUMP": ("process", 9),
+        "EDR_SUSPICIOUS_PROCESS": ("process", 7),
+        "EDR_CREDENTIAL_DUMP": ("process", 9),
+        "EDR_LATERAL_TOOL": ("lateral_movement", 8),
+        "EDR_REMOTE_SERVICE_CREATE": ("lateral_movement", 8),
+        "EDR_RANSOMWARE_BEHAVIOR": ("malware", 9),
+        "EDR_BLOCK": ("edr", 7),
     },
     "iam": {
         "LOGIN_FAIL": ("authentication", 6),
@@ -39,7 +48,8 @@ CEF_RE = re.compile(
     r"(?P<event_id>[^|]*)\|(?P<signature>[^|]*)\|(?P<severity>\d+)\|(?P<ext>.*)$"
 )
 
-KV_RE = re.compile(r"(\w+)=([^\s]+)")
+# Supports both key=value and key="value with spaces"
+KV_RE = re.compile(r"(\w+)=\"([^\"]*)\"|(\w+)=([^\s]+)")
 
 def parse_cef(text: str) -> Dict[str, Any]:
     m = CEF_RE.match(text.strip())
@@ -59,7 +69,13 @@ def parse_cef(text: str) -> Dict[str, Any]:
     }
 
     ext = m.group("ext") or ""
-    for k, v in KV_RE.findall(ext):
+    for m2 in KV_RE.finditer(ext):
+        if m2.group(1):
+            # quoted: key="value with spaces"
+            k, v = m2.group(1), m2.group(2)
+        else:
+            # unquoted: key=value
+            k, v = m2.group(3), m2.group(4)
         fields[k] = v
 
     return fields
@@ -86,7 +102,7 @@ def parse_csv(text: str) -> Dict[str, Any]:
 # Helpers
 # ----------------------------
 
-def to_int(value: Any) -> int | None:
+def to_int(value: Any) -> Optional[int]:
     """Best-effort conversion to int. Returns None if conversion fails."""
     if value is None:
         return None
@@ -132,21 +148,33 @@ def normalize_firewall(data: Dict[str, Any]) -> Dict[str, Any]:
 def normalize_av(data: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "event_type": data.get("event_type") or "AV_DETECT",
-        "host": data.get("host"),
-        "user": data.get("user"),
+        "host": data.get("host") or data.get("dhost") or data.get("shost"),
+        "user": data.get("suser") or data.get("user"),
         "vendor": data.get("vendor"),
         "product": data.get("product"),
+        # keep extra useful fields in base when present
+        "file": data.get("file"),
+        "malware": data.get("malware"),
+        "action": data.get("action"),
+        "reason": data.get("reason"),
     }
 
 def normalize_edr(data: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "event_type": data.get("event_type") or data.get("action") or "UNKNOWN",
-        "host": data.get("host"),
-        "user": data.get("user"),
-        "src_ip": data.get("src_ip"),
-        "dst_ip": data.get("dst_ip"),
+        "host": data.get("host") or data.get("dhost") or data.get("shost"),
+        "user": data.get("suser") or data.get("user"),
+        "src_ip": data.get("src") or data.get("src_ip"),
+        "dst_ip": data.get("dst") or data.get("dst_ip"),
         "src_port": to_int(data.get("src_port") or data.get("spt")),
         "dst_port": to_int(data.get("dst_port") or data.get("dpt")),
+        # extra EDR context
+        "process": data.get("process"),
+        "cmd": data.get("cmd") or data.get("cmdline"),
+        "tool": data.get("tool"),
+        "technique": data.get("technique"),
+        "action": data.get("action"),
+        "dhost": data.get("dhost"),
     }
 
 def normalize_iam(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -197,6 +225,18 @@ def normalize(payload: Dict[str, Any], raw_id: str, received_at_iso: str) -> Nor
     raw_event_type = base.get("event_type", "UNKNOWN")
     category, severity = map_event(source, raw_event_type)
 
+    # quick tags for filtering
+    if source in {"av", "edr"}:
+        act = str(base.get("action") or "").lower()
+        if act:
+            tags.append(f"action:{act}")
+        if base.get("malware"):
+            tags.append("marker:malware")
+        if base.get("tool"):
+            tags.append(f"tool:{str(base.get('tool')).lower()}")
+        if base.get("technique"):
+            tags.append(f"tech:{str(base.get('technique')).lower()}")
+
     return NormalizedEvent(
         event_id=raw_id,
         received_at=to_utc(received_at_iso),
@@ -215,6 +255,6 @@ def normalize(payload: Dict[str, Any], raw_id: str, received_at_iso: str) -> Nor
         vendor=base.get("vendor"),
         product=base.get("product"),
         message=str(raw_data),
-        fields=fields,
+        fields={**fields, **{k: v for k, v in base.items() if k not in {"event_type", "src_ip", "dst_ip", "src_port", "dst_port", "host", "user", "vendor", "product"} and v is not None}},
         tags=tags,
     )

@@ -236,6 +236,354 @@ def correlate_malware(window_seconds: int = 300) -> Tuple[bool, Dict]:
 
 
 # -------------------------------------------------
+# 3b) AV actions: quarantine / clean failed / AV disabled (tamper)
+# -------------------------------------------------
+
+def correlate_av_actions(window_seconds: int = 300) -> Tuple[bool, Dict]:
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(seconds=window_seconds)
+    events = all_events()
+
+    interesting = {"AV_QUARANTINE", "AV_CLEAN_FAIL", "AV_DISABLED"}
+
+    items: List[Dict] = []
+    for e in events:
+        ra = e.get("received_at")
+        if not ra:
+            continue
+        try:
+            ra_dt = _to_dt(ra)
+        except Exception:
+            continue
+        if ra_dt is None or ra_dt < window_start:
+            continue
+
+        if str(e.get("event_type") or "") not in interesting:
+            continue
+
+        items.append(e)
+
+    if not items:
+        return False, {}
+
+    # Prefer grouping by host, fall back to user
+    by_host: Dict[str, List[Dict]] = {}
+    for e in items:
+        host = e.get("host") or "unknown"
+        by_host.setdefault(host, []).append(e)
+
+    for host, group in by_host.items():
+        # choose the highest severity action present
+        types = {g.get("event_type") for g in group}
+        if "AV_DISABLED" in types:
+            itype = "AV_TAMPER"
+            title = f"Antivirus protection disabled on host {host}"
+            sev = "critical"
+            priority = "critical"
+            risk = 98
+        elif "AV_CLEAN_FAIL" in types:
+            itype = "AV_CLEAN_FAILED"
+            title = f"Antivirus failed to clean malware on host {host}"
+            sev = "high"
+            priority = "high"
+            risk = 90
+        else:
+            itype = "AV_QUARANTINE"
+            title = f"Antivirus quarantined a file on host {host}"
+            sev = "medium"
+            priority = "medium"
+            risk = 70
+
+        key = f"{itype}:{host}:{window_seconds}"
+        if _seen(key):
+            return False, {}
+
+        users = sorted({g.get("user") for g in group if g.get("user")})
+        evidence = [g.get("event_id") for g in group if g.get("event_id")]
+
+        inc = {
+            "type": itype,
+            "title": title,
+            "host": host,
+            "users": users,
+            "events": sorted(list(types)),
+            "count": len(group),
+            "window_seconds": window_seconds,
+            "first_seen": min(_to_dt(g["received_at"]) for g in group).isoformat(),
+            "last_seen": max(_to_dt(g["received_at"]) for g in group).isoformat(),
+            "severity": sev,
+            "priority": priority,
+            "risk": risk,
+            "asset_id": group[0].get("asset_id"),
+            "asset_criticality": group[0].get("asset_criticality"),
+            "asset_owner": group[0].get("asset_owner"),
+            "asset_zone": group[0].get("asset_zone"),
+            "evidence_event_ids": evidence,
+        }
+        return True, inc
+
+    return False, {}
+
+
+# -------------------------------------------------
+# 3c) EDR detections: suspicious process / credential dump / ransomware behavior / lateral tools
+# -------------------------------------------------
+
+def correlate_edr_detections(window_seconds: int = 300) -> Tuple[bool, Dict]:
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(seconds=window_seconds)
+    events = all_events()
+
+    interesting = {
+        "EDR_SUSPICIOUS_PROCESS",
+        "EDR_CREDENTIAL_DUMP",
+        "EDR_RANSOMWARE_BEHAVIOR",
+        "EDR_LATERAL_TOOL",
+        "EDR_REMOTE_SERVICE_CREATE",
+        "EDR_BLOCK",
+    }
+
+    items: List[Dict] = []
+    for e in events:
+        ra = e.get("received_at")
+        if not ra:
+            continue
+        try:
+            ra_dt = _to_dt(ra)
+        except Exception:
+            continue
+        if ra_dt is None or ra_dt < window_start:
+            continue
+
+        if str(e.get("event_type") or "") not in interesting:
+            continue
+
+        items.append(e)
+
+    if not items:
+        return False, {}
+
+    # Group by host
+    by_host: Dict[str, List[Dict]] = {}
+    for e in items:
+        host = e.get("host") or "unknown"
+        by_host.setdefault(host, []).append(e)
+
+    for host, group in by_host.items():
+        types = {g.get("event_type") for g in group}
+
+        # pick the most critical detection
+        if "EDR_RANSOMWARE_BEHAVIOR" in types:
+            itype = "RANSOMWARE_BEHAVIOR"
+            title = f"EDR detected ransomware-like behavior on host {host}"
+            sev = "critical"
+            priority = "critical"
+            risk = 99
+        elif "EDR_CREDENTIAL_DUMP" in types:
+            itype = "CREDENTIAL_DUMP"
+            title = f"EDR detected credential dumping on host {host}"
+            sev = "critical"
+            priority = "critical"
+            risk = 97
+        elif "EDR_LATERAL_TOOL" in types or "EDR_REMOTE_SERVICE_CREATE" in types:
+            itype = "EDR_LATERAL_ACTIVITY"
+            title = f"EDR detected lateral movement tooling on host {host}"
+            sev = "high"
+            priority = "high"
+            risk = 92
+        else:
+            itype = "SUSPICIOUS_PROCESS"
+            title = f"EDR detected suspicious process on host {host}"
+            sev = "high"
+            priority = "high"
+            risk = 85
+
+        key = f"{itype}:{host}:{window_seconds}"
+        if _seen(key):
+            return False, {}
+
+        users = sorted({g.get("user") for g in group if g.get("user")})
+        evidence = [g.get("event_id") for g in group if g.get("event_id")]
+
+        inc = {
+            "type": itype,
+            "title": title,
+            "host": host,
+            "users": users,
+            "events": sorted(list(types)),
+            "count": len(group),
+            "window_seconds": window_seconds,
+            "first_seen": min(_to_dt(g["received_at"]) for g in group).isoformat(),
+            "last_seen": max(_to_dt(g["received_at"]) for g in group).isoformat(),
+            "severity": sev,
+            "priority": priority,
+            "risk": risk,
+            "asset_id": group[0].get("asset_id"),
+            "asset_criticality": group[0].get("asset_criticality"),
+            "asset_owner": group[0].get("asset_owner"),
+            "asset_zone": group[0].get("asset_zone"),
+            "evidence_event_ids": evidence,
+        }
+        return True, inc
+
+    return False, {}
+
+
+
+# -------------------------------------------------
+# 3d) IAM password spray (one src_ip -> many users failures)
+# -------------------------------------------------
+
+def correlate_iam_password_spray(window_seconds: int = 180, threshold_users: int = 4) -> Tuple[bool, Dict]:
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(seconds=window_seconds)
+    events = all_events()
+
+    fails: List[Dict] = []
+    for e in events:
+        ra = e.get("received_at")
+        if not ra:
+            continue
+        try:
+            ra_dt = _to_dt(ra)
+        except Exception:
+            continue
+        if ra_dt is None or ra_dt < window_start:
+            continue
+
+        if str(e.get("event_type") or "") != "IAM_AUTH_FAIL":
+            continue
+
+        src_ip = e.get("src_ip") or (e.get("fields") or {}).get("src")
+        if not src_ip:
+            continue
+
+        user = e.get("user") or (e.get("fields") or {}).get("suser")
+        if not user:
+            continue
+
+        e2 = dict(e)
+        e2["_spray_src"] = src_ip
+        e2["_spray_user"] = user
+        fails.append(e2)
+
+    if not fails:
+        return False, {}
+
+    by_src: Dict[str, List[Dict]] = {}
+    for e in fails:
+        by_src.setdefault(e["_spray_src"], []).append(e)
+
+    for src, group in by_src.items():
+        users = sorted({g.get("_spray_user") for g in group if g.get("_spray_user")})
+        if len(users) < threshold_users:
+            continue
+
+        key = f"IAM_SPRAY:{src}:{window_seconds}:{threshold_users}:{len(users)}"
+        if _seen(key):
+            return False, {}
+
+        host = group[0].get("host") or "dc"
+        incident = {
+            "type": "IAM_PASSWORD_SPRAY",
+            "title": f"Possible password spray from {src} against {len(users)} users",
+            "src_ip": src,
+            "host": host,
+            "users": users,
+            "count": len(group),
+            "unique_users": len(users),
+            "window_seconds": window_seconds,
+            "first_seen": min(_to_dt(g["received_at"]) for g in group).isoformat(),
+            "last_seen": max(_to_dt(g["received_at"]) for g in group).isoformat(),
+            "severity": "high",
+            "priority": "high",
+            "risk": 88,
+            "asset_id": group[0].get("asset_id"),
+            "asset_criticality": group[0].get("asset_criticality"),
+            "asset_owner": group[0].get("asset_owner"),
+            "asset_zone": group[0].get("asset_zone"),
+            "evidence_event_ids": [g.get("event_id") for g in group if g.get("event_id")],
+        }
+        return True, incident
+
+    return False, {}
+
+
+# -------------------------------------------------
+# 3e) Endpoint login failures burst (host/user/src)
+# -------------------------------------------------
+
+def correlate_endpoint_login_fail(window_seconds: int = 180, threshold: int = 6) -> Tuple[bool, Dict]:
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(seconds=window_seconds)
+    events = all_events()
+
+    fails: List[Dict] = []
+    for e in events:
+        ra = e.get("received_at")
+        if not ra:
+            continue
+        try:
+            ra_dt = _to_dt(ra)
+        except Exception:
+            continue
+        if ra_dt is None or ra_dt < window_start:
+            continue
+
+        if str(e.get("event_type") or "") != "ENDPOINT_LOGIN_FAIL":
+            continue
+
+        src_ip = e.get("src_ip") or (e.get("fields") or {}).get("src")
+        host = e.get("host") or "unknown"
+        user = e.get("user") or "unknown"
+        if not src_ip:
+            continue
+
+        e2 = dict(e)
+        e2["_ep_key"] = f"{src_ip}:{host}:{user}"
+        fails.append(e2)
+
+    if not fails:
+        return False, {}
+
+    by_key: Dict[str, List[Dict]] = {}
+    for e in fails:
+        by_key.setdefault(e["_ep_key"], []).append(e)
+
+    for key0, group in by_key.items():
+        if len(group) < threshold:
+            continue
+
+        src_ip, host, user = key0.split(":", 2)
+        key = f"EP_BRUTE:{src_ip}:{host}:{user}:{window_seconds}:{threshold}"
+        if _seen(key):
+            return False, {}
+
+        incident = {
+            "type": "ENDPOINT_BRUTEFORCE",
+            "title": f"Repeated endpoint login failures (RDP) from {src_ip} on {host} for {user}",
+            "src_ip": src_ip,
+            "host": host,
+            "user": user,
+            "count": len(group),
+            "window_seconds": window_seconds,
+            "first_seen": min(_to_dt(g["received_at"]) for g in group).isoformat(),
+            "last_seen": max(_to_dt(g["received_at"]) for g in group).isoformat(),
+            "severity": "medium",
+            "priority": "medium",
+            "risk": 70,
+            "asset_id": group[0].get("asset_id"),
+            "asset_criticality": group[0].get("asset_criticality"),
+            "asset_owner": group[0].get("asset_owner"),
+            "asset_zone": group[0].get("asset_zone"),
+            "evidence_event_ids": [g.get("event_id") for g in group if g.get("event_id")],
+        }
+        return True, incident
+
+    return False, {}
+
+
+# -------------------------------------------------
 # 4) Lateral movement (IAM success -> EDR activity on another host)
 # -------------------------------------------------
 
@@ -280,6 +628,7 @@ def correlate_lateral_movement(window_seconds: int = 300) -> Tuple[bool, Dict]:
         "login_success",
         "ad_login_success",
         "iam_login_success",
+        "iam_auth_success",
         "4624",  # windows logon success sometimes mapped as ID
     }
 
@@ -291,6 +640,14 @@ def correlate_lateral_movement(window_seconds: int = 300) -> Tuple[bool, Dict]:
         "suspicious_script",
         "credential_dumping",
         "remote_exec",
+        "edr_suspicious_process",
+        "edr_credential_dump",
+        "edr_lateral_tool",
+        "edr_remote_service_create",
+        "edr_ransomware_behavior",
+        # endpoints (os logs)
+        "endpoint_process_start",
+        "endpoint_service_create",
     }
 
     for e in events:
@@ -318,7 +675,7 @@ def correlate_lateral_movement(window_seconds: int = 300) -> Tuple[bool, Dict]:
                 auth_success.append(e2)
 
         # 2) EDR activity (case-insensitive + allow other source_type values)
-        if st_l in ("edr", "endpoint", "agent") and et_l in EDR_TYPES:
+        if st_l in ("edr", "endpoint", "endpoints", "agent", "os", "windows") and et_l in EDR_TYPES:
             host = _pick_host(e)
             if host:
                 e2 = dict(e)
@@ -430,6 +787,30 @@ def run_correlation() -> List[Dict]:
             user="",
         )
 
+    found, inc = correlate_iam_password_spray()
+    if found:
+        incidents.append(inc)
+        _store_incident_and_alert(
+            inc,
+            priority=inc.get("priority", "high"),
+            risk=int(inc.get("risk", 85)),
+            src_ip=inc.get("src_ip", ""),
+            dst_ip=inc.get("host", ""),
+            user=",".join(inc.get("users", [])),
+        )
+
+    found, inc = correlate_endpoint_login_fail()
+    if found:
+        incidents.append(inc)
+        _store_incident_and_alert(
+            inc,
+            priority=inc.get("priority", "medium"),
+            risk=int(inc.get("risk", 70)),
+            src_ip=inc.get("src_ip", ""),
+            dst_ip=inc.get("host", ""),
+            user=str(inc.get("user", "")),
+        )
+
     found, inc = correlate_malware()
     if found:
         incidents.append(inc)
@@ -437,6 +818,30 @@ def run_correlation() -> List[Dict]:
             inc,
             priority="critical",
             risk=95,
+            src_ip="",
+            dst_ip=inc.get("host", ""),
+            user=",".join(inc.get("users", [])),
+        )
+
+    found, inc = correlate_av_actions()
+    if found:
+        incidents.append(inc)
+        _store_incident_and_alert(
+            inc,
+            priority=inc.get("priority", "high"),
+            risk=int(inc.get("risk", 85)),
+            src_ip="",
+            dst_ip=inc.get("host", ""),
+            user=",".join(inc.get("users", [])),
+        )
+
+    found, inc = correlate_edr_detections()
+    if found:
+        incidents.append(inc)
+        _store_incident_and_alert(
+            inc,
+            priority=inc.get("priority", "high"),
+            risk=int(inc.get("risk", 90)),
             src_ip="",
             dst_ip=inc.get("host", ""),
             user=",".join(inc.get("users", [])),

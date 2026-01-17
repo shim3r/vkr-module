@@ -11,3 +11,6 @@ def list_alerts(limit: int = 50) -> List[Dict]:
 
 def clear_alerts() -> None:
     _ALERTS.clear()
+
+def count_alerts() -> int:
+    return len(_ALERTS)

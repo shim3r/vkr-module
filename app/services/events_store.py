@@ -12,5 +12,8 @@ def list_events(limit: int = 100) -> List[Dict]:
 def all_events() -> List[Dict]:
     return list(_EVENTS)
 
+def count_events() -> int:
+    return len(_EVENTS)
+
 def clear_events() -> None:
     _EVENTS.clear()
