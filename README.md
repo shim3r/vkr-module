@@ -17,6 +17,8 @@
 - logs_examples/ — тестовые логи
 
 ### Способ запуска проекта
+```bash
 cd ~/Desktop/vkr-module
 source .venv/bin/activate
 python -m uvicorn app.main:app --reload
+```
