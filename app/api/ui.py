@@ -147,7 +147,7 @@ HTML = """<!doctype html>
     <div class="hdr">
       <div class="h">
         <b>Controls</b>
-        <span>Кнопки управляют демо-атаками (API: /api/sim/*)</span>
+        <span>Кнопки запускают демо-атаки до остановки (API: /api/sim/*)</span>
       </div>
       <div class="badge">UI: /</div>
     </div>
@@ -162,8 +162,8 @@ HTML = """<!doctype html>
           <option value="malware">Malware Detected (T1204)</option>
         </select>
 
-        <button class="btn primary" onclick="runAttack()">Run selected</button>
-        <button class="btn" onclick="runRandomAttack()">Run random</button>
+        <button class="btn primary" onclick="runAttack()">Start selected</button>
+        <button class="btn" onclick="runRandomAttack()">Start random</button>
         <button class="btn danger" onclick="stopAttack()">Stop attack</button>
         <button class="btn ghost" onclick="resetData()">Reset data</button>
       </div>

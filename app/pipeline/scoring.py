@@ -3,7 +3,7 @@ from typing import Dict, Tuple
 SOURCE_WEIGHT = {"firewall": 10, "av": 8, "edr": 6, "iam": 5, "arm": 3}
 
 CRITICAL_MARKERS = [
-    "VPN_LOGIN_FAIL", "PORTSCAN", "AV_DETECT",
+    "VPN_LOGIN_FAIL", "PORTSCAN", "AV_DETECT", "MALWARE_DETECT",
     "credential_dumping", "ransom", "C2",
     "4688", "4697", "GROUP_ADD", "ACCOUNT_LOCK",
 ]

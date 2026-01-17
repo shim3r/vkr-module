@@ -48,7 +48,7 @@ async def sim_status():
 
 
 async def _run_attack(mode: str):
-    """Run one demo attack by generating a short sequence of events and sending them into the pipeline."""
+    """Run a demo attack continuously until stopped."""
     global _last_attack
 
     if mode not in ATTACKS:
@@ -56,17 +56,21 @@ async def _run_attack(mode: str):
 
     _last_attack = mode
 
-    # Each item is (payload_dict, delay_seconds_after)
-    seq = ATTACKS[mode]()
-
-    for payload, delay_s in seq:
-        await ingest_event(payload)
-        await asyncio.sleep(float(delay_s))
+    try:
+        while True:
+            # Each item is (payload_dict, delay_seconds_after)
+            seq = ATTACKS[mode]()
+            for payload, delay_s in seq:
+                await ingest_event(payload)
+                await asyncio.sleep(float(delay_s))
+            await asyncio.sleep(0.5)
+    except asyncio.CancelledError:
+        return
 
 
 @router.post("/sim/attack")
 async def attack(mode: str):
-    """Start a one-shot demo attack (non-blocking)."""
+    """Start a demo attack (runs until stopped)."""
     global _attack_task
 
     if _attack_task and not _attack_task.done():
@@ -80,7 +84,12 @@ async def attack(mode: str):
 async def attack_random():
     """Start a random one-shot demo attack."""
     mode = random.choice(list(ATTACKS.keys()))
-    return await attack(mode)
+    global _attack_task
+    if _attack_task and not _attack_task.done():
+        _attack_task.cancel()
+        await asyncio.sleep(0)
+    _attack_task = asyncio.create_task(_run_attack(mode))
+    return {"status": "started", "mode": mode}
 
 
 @router.get("/sim/attack-status")
