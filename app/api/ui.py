@@ -359,27 +359,132 @@ HTML = """<!doctype html>
       border: 1px solid rgba(15,23,42,0.12);
       background: rgba(15,23,42,0.04);
       color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      white-space: nowrap;
+      line-height: 1;
     }
     .badge.ok{ color: var(--good); border-color: rgba(22,163,74,0.35); background: rgba(22,163,74,0.08); }
     .badge.warn{ color: var(--warn); border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.10); }
     .badge.bad{ color: var(--bad); border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.10); }
 
     /* Tables */
-    table{ width: 100%; border-collapse: collapse; }
+    table{ width: 100%; border-collapse: collapse; table-layout: fixed; }
     th, td{ padding: 10px 10px; border-bottom: 1px solid rgba(15,23,42,0.08); font-size: 12px; vertical-align: top; }
+
+    /* Fixed column widths for Incidents table (SIEM-style) */
+    .incidents-table th:nth-child(1), .incidents-table td:nth-child(1){ width: 150px; }   /* id */
+    .incidents-table th:nth-child(2), .incidents-table td:nth-child(2){ width: 110px; }   /* severity */
+    .incidents-table th:nth-child(3), .incidents-table td:nth-child(3){ width: 140px; }   /* status */
+    .incidents-table th:nth-child(4), .incidents-table td:nth-child(4){ width: 70px; }    /* sla */
+    .incidents-table th:nth-child(5), .incidents-table td:nth-child(5){ width: 140px; }   /* assignee */
+    .incidents-table th:nth-child(6), .incidents-table td:nth-child(6){ width: 170px; }   /* type */
+    .incidents-table th:nth-child(7), .incidents-table td:nth-child(7){ width: 150px; }   /* first_seen */
+    .incidents-table th:nth-child(8), .incidents-table td:nth-child(8){ width: 120px; }   /* asset */
+    .incidents-table th:nth-child(9), .incidents-table td:nth-child(9){ width: 260px; }   /* title */
+
+    /* Prevent layout shift from long text (incidents table only) */
+    .incidents-table td:not(.col-comment):not(.col-actions){
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Grid lines (SIEM-style) for incidents table: uniform separators */
+    .incidents-table th,
+    .incidents-table td{
+      border-right: 1px solid rgba(15,23,42,0.06);
+    }
+    .incidents-table th:last-child,
+    .incidents-table td:last-child{
+      border-right: none;
+    }
+
     th{ text-align: left; color: var(--muted); font-weight: 800; background: rgba(15,23,42,0.02); }
+
+    /* Center column headers for Incidents table only */
+    .incidents-table thead th{
+      text-align: center;
+      vertical-align: middle;
+    }
     tr:hover td{ background: rgba(47,111,237,0.04); }
 
     .table-scroll{ overflow: auto; }
+    /* Default: tables can still have a reasonable minimum */
     .table-scroll table{ min-width: 1200px; }
 
-    /* Sticky right column so Save is always visible */
-    th.col-actions, td.col-actions{ position: sticky; right: 0; z-index: 2; background: #fff; }
-    thead th.col-actions{ z-index: 3; }
+    /* SIEM-grade fixed grid: keep designed column widths and scroll horizontally instead of squeezing */
+    .table-scroll table.tbl-fixed{
+      width: max-content;
+      min-width: 1400px;
+    }
 
-    /* Keep actions visible and allow comment to wrap */
-    th.col-actions, td.col-actions{ width: 110px; min-width: 110px; }
-    th.col-comment, td.col-comment{ width: 320px; min-width: 320px; }
+    /* Incidents full table total designed width (sum of fixed columns) */
+    .table-scroll table.incidents-table{
+      min-width: 1920px;
+    }
+
+    /* Slightly tighter spacing on smaller viewports */
+    @media (max-width: 1100px){
+      th, td{ padding: 8px 8px; }
+      .tbl-input{ padding: 6px 8px; }
+      .tbl-select{ padding: 6px 8px; }
+      .tbl-textarea{ padding: 8px 9px; }
+    }
+
+    /* Sticky actions column (flush with table, no separate "window" look) */
+    th.col-actions, td.col-actions{
+      position: static;
+      right: -1px;
+      z-index: 6;
+      background: inherit;          /* follow row/header background */
+      box-shadow: none;            /* remove floating shadow */
+      border-left: none;
+    }
+    thead th.col-actions{
+      z-index: 7;
+      background: rgba(15,23,42,0.02);
+    }
+
+    /* Column sizing: comment fixed, actions flexible */
+    th.col-comment, td.col-comment{ width: 320px; min-width: 320px; max-width: 320px; }
+    th.col-actions, td.col-actions{ min-width: 150px; }
+
+    /* Small gap only: textarea should extend up to actions column */
+    td.col-comment{ padding-right: 14px; }
+
+    /* Actions cell: SIEM-style alignment */
+    td.col-actions{
+      vertical-align: top;
+      padding: 10px;
+      display: flex;
+      align-items: stretch;
+    }
+
+    /* Save button: SIEM-style, visually part of row */
+    td.col-actions .tbl-btn{
+      width: 100%;
+      height: 100%;
+      min-height: 72px;              /* та же базовая высота, что у comment */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      border-radius: 12px;
+      background: linear-gradient(135deg, rgba(47,111,237,0.95), rgba(47,111,237,0.70));
+      border: 1px solid rgba(47,111,237,0.55);
+      color: #ffffff;
+      font-weight: 900;
+      letter-spacing: 0.3px;
+      box-sizing: border-box;
+    }
+    td.col-actions .tbl-btn:hover{
+      filter: brightness(1.04);
+    }
+    td.col-actions .tbl-btn:active{
+      transform: translateY(1px);
+    }
 
     .tbl-textarea{
       padding: 9px 10px;
@@ -389,11 +494,16 @@ HTML = """<!doctype html>
       font-size: 12px;
       outline: none;
       width: 100%;
-      min-width: 320px;
+      box-sizing: border-box;
+      min-width: 0;
+      height: auto;
+      overflow: hidden;
       min-height: 72px;
       line-height: 1.35;
       resize: vertical;
       font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      max-width: 100%;
+      min-width: 100%;
     }
     .tbl-textarea:focus{
       background: #fff;
@@ -462,10 +572,7 @@ HTML = """<!doctype html>
       <a href="#/simulation" data-route="simulation">Симулятор атак <small>demo</small></a>
     </nav>
 
-    <div class="footer">
-      <span class="mono">UI</span>
-      <span class="mono">/</span>
-    </div>
+    
   </aside>
 
   <main class="main">
@@ -640,22 +747,22 @@ HTML = """<!doctype html>
     <!-- INCIDENTS -->
     <section id="sec-incidents" class="section">
       <div class="card">
-        <div class="hdr"><b>Инциденты</b><span>правила корреляции</span></div>
+        <div class="hdr"><b>Инциденты</b></div>
         <div class="body table-scroll" style="padding:0">
-          <table>
+          <table class="tbl-fixed incidents-table">
             <thead>
               <tr>
-                <th>id</th>
-                <th>severity</th>
-                <th>status</th>
-                <th>sla</th>
-                <th>assignee</th>
-                <th>type</th>
-                <th>first_seen</th>
-                <th>asset</th>
-                <th>title</th>
-                <th class="col-comment">comment</th>
-                <th class="col-actions">actions</th>
+                <th>ID</th>
+                <th>SEVERITY</th>
+                <th>STATUS</th>
+                <th>SLA</th>
+                <th>ASSIGNEE</th>
+                <th>TYPE</th>
+                <th>FIRST_SEEN</th>
+                <th>ASSET</th>
+                <th>TITLE</th>
+                <th class="col-comment">DESCRIPTIONS</th>
+                <th class="col-actions">ACTIONS</th>
               </tr>
             </thead>
             <tbody id="tblIncidentsFull"></tbody>
@@ -783,7 +890,7 @@ function esc(s){
 function statusBadge(val){
   const s = (val || '').toString().toLowerCase();
   if(s.includes('new')) return '<span class="badge warn">NEW</span>';
-  if(s.includes('progress')) return '<span class="badge warn">IN PROGRESS</span>';
+  if(s.includes('progress')) return '<span class="badge warn">IN&nbsp;PROGRESS</span>';
   if(s.includes('resolved')) return '<span class="badge ok">RESOLVED</span>';
   if(s.includes('closed')) return '<span class="badge ok">CLOSED</span>';
   return '<span class="badge">' + esc(val || '—') + '</span>';
@@ -1096,7 +1203,7 @@ function renderIncidentsTables(items){
       <td class="mono">${fmtTime(fs)}</td>
       <td class="mono muted">${esc(asset)}</td>
       <td>${esc(title)}</td>
-      <td class="col-comment"><textarea class="tbl-textarea" rows="3" data-incident-id="${esc(id)}" data-role="comment" placeholder="Комментарий (сохраняется кнопкой Save)">${esc(comment)}</textarea></td>
+      <td class="col-comment"><textarea class="tbl-textarea" rows="2" style="width:100%" data-incident-id="${esc(id)}" data-role="comment" placeholder="Комментарий (сохраняется кнопкой Save)">${esc(comment)}</textarea></td>
       <td class="col-actions"><button class="tbl-btn" data-incident-id="${esc(id)}" data-action="save">Save</button></td>
     `;
     full.appendChild(row);
@@ -1137,6 +1244,8 @@ function renderIncidentsTables(items){
 
   // prevent refresh from overwriting user input while editing
   attachEditingGuards(full);
+  // auto-grow comments so rows expand downward (no overlap with Save)
+  attachAutoGrow(full);
 }
 
 function renderCharts(alerts, incidents){
@@ -1185,7 +1294,22 @@ function attachEditingGuards(root){
     el.addEventListener('blur', ()=> setEditing(false));
   });
 }
+// ---------------------------
+// Auto-grow for incident comment textarea (SIEM-like UX)
+// ---------------------------
+function autoGrow(el){
+  if(!el) return;
+  el.style.height = 'auto';
+  el.style.height = (el.scrollHeight + 2) + 'px';
+}
 
+function attachAutoGrow(root){
+  if(!root) return;
+  root.querySelectorAll('textarea.tbl-textarea').forEach(t => {
+    autoGrow(t);
+    t.addEventListener('input', ()=> autoGrow(t));
+  });
+}
 // ---------------------------
 // Refresh loop
 // ---------------------------
