@@ -4,8 +4,54 @@ from collections import deque
 from datetime import datetime, timezone
 from typing import Deque, Dict, List, Optional
 
+import json
+from pathlib import Path
+
+try:
+    # Preferred (SIEM-style) path
+    from app.config import INCIDENTS_DIR
+except Exception:
+    # Fallback for older layouts
+    INCIDENTS_DIR = Path("data/incidents")
+
+
 # In-memory store for incidents (demo mode)
 _INCIDENTS: Deque[Dict] = deque(maxlen=200)
+
+
+def _ensure_incidents_dir() -> None:
+    try:
+        INCIDENTS_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        # Do not break the app if filesystem is read-only
+        pass
+
+
+def _persist_incident(incident: Dict) -> None:
+    """Persist a single incident to disk as JSON (SIEM-style)."""
+    _ensure_incidents_dir()
+    incident_id = str(incident.get("incident_id", ""))
+    if not incident_id:
+        return
+    path = INCIDENTS_DIR / f"{incident_id}.json"
+    try:
+        path.write_text(
+            json.dumps(incident, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        # Never fail incident creation due to IO
+        pass
+
+
+def _delete_incident_file(incident_id: str) -> None:
+    _ensure_incidents_dir()
+    path = INCIDENTS_DIR / f"{incident_id}.json"
+    try:
+        if path.exists():
+            path.unlink()
+    except Exception:
+        pass
 
 
 def _now() -> str:
@@ -57,6 +103,7 @@ def add_incident(inc: Dict) -> Dict:
     stored.setdefault("comment", "")
 
     _INCIDENTS.appendleft(stored)
+    _persist_incident(stored)
     return stored
 
 
@@ -91,6 +138,7 @@ def update_incident(
         inc["comment"] = comment
 
     inc["updated_at"] = _now()
+    _persist_incident(inc)
     return inc
 
 
@@ -99,5 +147,17 @@ def count_incidents() -> int:
 
 
 def clear_incidents() -> None:
-    """Clear all stored incidents (in-memory)."""
+    """Clear all stored incidents (in-memory and on disk)."""
+    # Clear memory
     _INCIDENTS.clear()
+
+    # Best-effort: clear persisted files
+    _ensure_incidents_dir()
+    try:
+        for p in INCIDENTS_DIR.glob("INC-*.json"):
+            try:
+                p.unlink()
+            except Exception:
+                pass
+    except Exception:
+        pass

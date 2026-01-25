@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.responses import Response
 
 from app.api.ingest import router as ingest_router
 from app.api.alerts import router as alerts_router
@@ -21,3 +22,7 @@ app.include_router(sim_router, prefix="/api")
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return Response(status_code=204)
