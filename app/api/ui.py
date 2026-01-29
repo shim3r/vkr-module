@@ -19,9 +19,10 @@ def _try_import(path: str, name: str) -> Optional[Any]:
 
 # Events store (raw + aggregates)
 list_events = _try_import("app.services.events_store", "list_events")
-list_aggregates = _try_import("app.services.events_store", "list_aggregates")
+# Aggregates store (5-minute buckets)
+list_aggregates = _try_import("app.services.aggregates_store", "list_aggregates")
 count_events = _try_import("app.services.events_store", "count_events")
-count_aggregates = _try_import("app.services.events_store", "count_aggregates")
+count_aggregates = _try_import("app.services.aggregates_store", "count_aggregates")
 
 # Alerts store
 list_alerts = (
@@ -44,7 +45,8 @@ update_incident = _try_import("app.services.incidents_store", "update_incident")
 
 # --- Asset DB (CMDB JSON) ---
 ASSETS_PATHS: List[Path] = [
-    Path("data/cmdb/assets.json")
+    Path("data/cmdb/assets.json"),
+    Path("data/assets.json"),
 ]
 
 
@@ -59,7 +61,6 @@ def _load_assets() -> List[Dict[str, Any]]:
                 continue
             data = json.loads(raw)
             if isinstance(data, list):
-                # Keep only dict items
                 return [x for x in data if isinstance(x, dict)]
         except Exception:
             continue
@@ -92,7 +93,6 @@ def _safe_list(fn: Optional[Callable[[int], Any]], limit: int) -> list:
 
 
 # --- Metrics helpers ---
-from typing import Any, Dict, List
 
 def _count_by(items: List[Dict[str, Any]], key: str) -> Dict[str, int]:
     out: Dict[str, int] = {}
@@ -203,7 +203,8 @@ def api_metrics() -> Dict[str, Any]:
         "cmdb": {
             "assets_count": assets_count,
             "paths": [str(p) for p in ASSETS_PATHS],
-        }
+        },
+        "note": "metrics generated in ui.py",
     }
 
 
@@ -216,7 +217,7 @@ def api_events(limit: int = Query(50, ge=1, le=500)) -> Dict[str, Any]:
 @router.get("/api/events-aggregated", include_in_schema=False)
 def api_events_aggregated(limit: int = Query(50, ge=1, le=500)) -> Dict[str, Any]:
     items = _safe_list(list_aggregates, limit)
-    return {"items": items, "limit": limit}
+    return {"items": items, "count": len(items), "limit": limit, "note": "from aggregates_store"}
 
 
 @router.get("/api/alerts", include_in_schema=False)
@@ -260,7 +261,7 @@ def api_assets() -> Dict[str, Any]:
     }
 
 
-# Simple search endpoint for assets (UI/debug)
+# Asset search endpoint
 @router.get("/api/assets/search", include_in_schema=False)
 def api_assets_search(q: str = Query("", min_length=0, max_length=100)) -> Dict[str, Any]:
     qn = (q or "").strip().lower()

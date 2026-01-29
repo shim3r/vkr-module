@@ -5,6 +5,7 @@ from uuid import uuid4
 from app.pipeline.normalize import normalize
 from app.pipeline.enrich import enrich_dict
 from app.pipeline.scoring import score
+from app.pipeline.aggregate import update_aggregate
 from app.pipeline.correlate import run_correlation
 
 from app.services.alerts_store import add_alert
@@ -65,6 +66,11 @@ async def ingest_event(payload: dict) -> dict:
     # Persist risk/priority back into normalized record (useful for searches/correlation)
     normalized_dict["risk"] = risk
     normalized_dict["priority"] = priority
+
+
+    # 3.1) Агрегация (5-минутные бакеты, dedup)
+    update_aggregate(normalized_dict)
+
 
     # 4) Сохраняем нормализованное событие для последующей корреляции
     add_event(normalized_dict)
