@@ -59,15 +59,15 @@ async def ingest_event(payload: dict) -> dict:
     # 2.1) Обогащение (CMDB/context) — SIEM-style enrichment
     normalized_dict = enrich_dict(normalized_dict)
 
-    # 3) Сохраняем нормализованное событие для последующей корреляции
-    add_event(normalized_dict)
-
-    # 4) Скоринг / приоритизация (на нормализованном + обогащённом событии)
+    # 3) Скоринг / приоритизация (на нормализованном + обогащённом событии)
     risk, priority, is_critical = score(normalized_dict)
 
     # Persist risk/priority back into normalized record (useful for searches/correlation)
     normalized_dict["risk"] = risk
     normalized_dict["priority"] = priority
+
+    # 4) Сохраняем нормализованное событие для последующей корреляции
+    add_event(normalized_dict)
 
     # Save normalized event to disk (SIEM-style storage)
     normalized_path = NORMALIZED_DIR / f"{raw_id}.json"
@@ -92,8 +92,8 @@ async def ingest_event(payload: dict) -> dict:
             "raw_id": raw_id,
             "priority": priority,
             "risk": risk,
-            "source_type": payload.get("source_type"),
-            "format": payload.get("format"),
+            "source_type": normalized_dict.get("source_type") or payload.get("source_type"),
+            "format": normalized_dict.get("format") or payload.get("format"),
             "received_at": record["received_at"],
             "event_type": normalized_dict.get("event_type"),
             "src_ip": normalized_dict.get("src_ip"),

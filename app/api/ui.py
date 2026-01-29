@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import HTMLResponse
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, List
+
+import json
+from pathlib import Path
 
 router = APIRouter(tags=["ui"])
 
@@ -38,8 +41,29 @@ count_incidents = _try_import("app.services.incidents_store", "count_incidents")
 get_incident = _try_import("app.services.incidents_store", "get_incident")
 update_incident = _try_import("app.services.incidents_store", "update_incident")
 
-# Asset DB (demo in-memory)
-ASSET_DB = _try_import("app.pipeline.collector", "ASSET_DB")
+
+# --- Asset DB (CMDB JSON) ---
+ASSETS_PATHS: List[Path] = [
+    Path("data/cmdb/assets.json")
+]
+
+
+def _load_assets() -> List[Dict[str, Any]]:
+    """Load assets from CMDB JSON (best-effort)."""
+    for p in ASSETS_PATHS:
+        try:
+            if not p.exists():
+                continue
+            raw = p.read_text(encoding="utf-8").strip()
+            if not raw:
+                continue
+            data = json.loads(raw)
+            if isinstance(data, list):
+                # Keep only dict items
+                return [x for x in data if isinstance(x, dict)]
+        except Exception:
+            continue
+    return []
 
 
 def _safe_count(fn: Optional[Callable[[], int]], fallback_list_fn: Optional[Callable[[int], Any]] = None) -> int:
@@ -67,47 +91,119 @@ def _safe_list(fn: Optional[Callable[[int], Any]], limit: int) -> list:
         return []
 
 
+# --- Metrics helpers ---
+from typing import Any, Dict, List
+
+def _count_by(items: List[Dict[str, Any]], key: str) -> Dict[str, int]:
+    out: Dict[str, int] = {}
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        v = it.get(key)
+        if v is None:
+            v = "unknown"
+        v = str(v)
+        out[v] = out.get(v, 0) + 1
+    return out
+
+
+def _top_by(items: List[Dict[str, Any]], key: str, limit: int = 10) -> List[Dict[str, Any]]:
+    counts = _count_by(items, key)
+    top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:limit]
+    return [{"key": k, "count": c} for k, c in top]
+
+
 # --- API endpoints for new UI ---
 
 @router.get("/api/metrics", include_in_schema=False)
 def api_metrics() -> Dict[str, Any]:
-    # totals
+    # totals (best-effort)
     events_raw = _safe_count(count_events, list_events)
     events_aggregated = _safe_count(count_aggregates, None)
-    alerts = _safe_count(count_alerts, list_alerts)
-    incidents = _safe_count(count_incidents, list_incidents)
+    alerts_total = _safe_count(count_alerts, list_alerts)
+    incidents_total = _safe_count(count_incidents, list_incidents)
 
-    # per-source counters (best-effort, based on raw events)
-    by_source: Dict[str, int] = {"firewall": 0, "av": 0, "edr": 0, "iam": 0, "endpoints": 0}
+    # Pull recent objects for breakdowns
+    events_sample: List[Dict[str, Any]] = []
+    alerts_sample: List[Dict[str, Any]] = []
+    incidents_sample: List[Dict[str, Any]] = []
+
     if callable(list_events):
         try:
             data = list_events(10_000)
-            items = data if isinstance(data, list) else list(data)
-            for e in items:
-                if not isinstance(e, dict):
-                    continue
-                st = str(e.get("source_type") or e.get("source") or "").lower()
-                # normalize common variants
-                if st in ("iam/ad", "iam", "ad", "active_directory"):
-                    st = "iam"
-                if st in ("antivirus", "av"):
-                    st = "av"
-                if st in ("edr", "edr_system"):
-                    st = "edr"
-                if st in ("endpoint", "endpoints", "os", "os_logs"):
-                    st = "endpoints"
-                if st in by_source:
-                    by_source[st] += 1
+            events_sample = data if isinstance(data, list) else list(data)
         except Exception:
-            pass
+            events_sample = []
+
+    if callable(list_alerts):
+        try:
+            data = list_alerts(10_000)
+            alerts_sample = data if isinstance(data, list) else list(data)
+        except Exception:
+            alerts_sample = []
+
+    if callable(list_incidents):
+        try:
+            data = list_incidents(10_000)
+            incidents_sample = data if isinstance(data, list) else list(data)
+        except Exception:
+            incidents_sample = []
+
+    # Per-source counters (from raw events)
+    by_source: Dict[str, int] = {"firewall": 0, "av": 0, "edr": 0, "iam": 0, "endpoints": 0}
+    for e in events_sample:
+        if not isinstance(e, dict):
+            continue
+        st = str(e.get("source_type") or e.get("source") or "").lower()
+        # normalize common variants
+        if st in ("iam/ad", "iam", "ad", "active_directory"):
+            st = "iam"
+        if st in ("antivirus", "av"):
+            st = "av"
+        if st in ("edr", "edr_system"):
+            st = "edr"
+        if st in ("endpoint", "endpoints", "os", "os_logs"):
+            st = "endpoints"
+        if st in by_source:
+            by_source[st] += 1
+
+    # Alerts/Incidents breakdowns
+    alerts_by_priority = _count_by(alerts_sample, "priority")
+    incidents_by_severity = _count_by(incidents_sample, "severity")
+    incidents_by_status = _count_by(incidents_sample, "status")
+
+    # Top entities from events
+    top_event_types = _top_by(events_sample, "event_type", limit=10)
+    top_src_ip = _top_by(events_sample, "src_ip", limit=10)
+    top_dst_ip = _top_by(events_sample, "dst_ip", limit=10)
+    top_users = _top_by(events_sample, "user", limit=10)
+    top_assets = _top_by(events_sample, "asset_id", limit=10)
+
+    # A small status section for debugging env/paths
+    assets_count = len(_load_assets())
 
     return {
         "events_raw": events_raw,
         "events_aggregated": events_aggregated,
-        "alerts": alerts,
-        "incidents": incidents,
+        "alerts": alerts_total,
+        "incidents": incidents_total,
         "by_source": by_source,
-        "note": "metrics generated in ui.py"
+        "breakdowns": {
+            "alerts_by_priority": alerts_by_priority,
+            "incidents_by_severity": incidents_by_severity,
+            "incidents_by_status": incidents_by_status,
+        },
+        "tops": {
+            "event_types": top_event_types,
+            "src_ip": top_src_ip,
+            "dst_ip": top_dst_ip,
+            "users": top_users,
+            "assets": top_assets,
+        },
+        "cmdb": {
+            "assets_count": assets_count,
+            "paths": [str(p) for p in ASSETS_PATHS],
+        }
     }
 
 
@@ -152,12 +248,46 @@ def api_patch_incident(incident_id: str, payload: Dict[str, Any]) -> Dict[str, A
     return updated
 
 
+
 @router.get("/api/assets", include_in_schema=False)
 def api_assets() -> Dict[str, Any]:
-    # ASSET_DB can be dict or None
-    if isinstance(ASSET_DB, dict):
-        return {"items": ASSET_DB, "note": "in-memory demo asset db"}
-    return {"items": {}, "note": "ASSET_DB not found in app.pipeline.collector"}
+    assets = _load_assets()
+    return {
+        "items": assets,
+        "count": len(assets),
+        "paths": [str(p) for p in ASSETS_PATHS],
+        "note": "assets loaded from CMDB JSON",
+    }
+
+
+# Simple search endpoint for assets (UI/debug)
+@router.get("/api/assets/search", include_in_schema=False)
+def api_assets_search(q: str = Query("", min_length=0, max_length=100)) -> Dict[str, Any]:
+    qn = (q or "").strip().lower()
+    assets = _load_assets()
+    if not qn:
+        return {"items": assets, "count": len(assets), "q": q}
+
+    def _hit(a: Dict[str, Any]) -> bool:
+        host = str(a.get("host") or "").lower()
+        name = str(a.get("name") or "").lower()
+        asset_id = str(a.get("asset_id") or a.get("id") or "").lower()
+        ips = a.get("ips") or []
+        if isinstance(ips, str):
+            ips_list = [ips]
+        elif isinstance(ips, list):
+            ips_list = [str(x) for x in ips]
+        else:
+            ips_list = []
+        return (
+            qn in host
+            or qn in name
+            or qn in asset_id
+            or any(qn in ip.lower() for ip in ips_list)
+        )
+
+    filtered = [a for a in assets if _hit(a)]
+    return {"items": filtered, "count": len(filtered), "q": q}
 
 HTML = """<!doctype html>
 <html lang="ru">
@@ -810,9 +940,8 @@ HTML = """<!doctype html>
     <!-- ASSETS -->
     <section id="sec-assets" class="section">
       <div class="card">
-        <div class="hdr"><b>Активы (Asset DB)</b><span>демо CMDB</span></div>
+        <div class="hdr"><b>Активы (Asset DB)</b></div>
         <div class="body">
-          <div class="note">Это демо-витрина «Базы активов» из блок-схемы. Сейчас Asset DB живёт в collector.py (in-memory). Позже можно вынести в отдельный сервис и сделать CRUD.</div>
           <pre class="mono" id="assetJson" style="margin-top:10px; background:#0b1220; color:#e5e7eb; padding:12px; border-radius:14px; overflow:auto; max-height:520px;">loading...</pre>
         </div>
       </div>
