@@ -1,0 +1,5 @@
+{
+  "bad_ips": ["203.0.113.66"],
+  "bad_users": ["administrator"],
+  "bad_hashes": []
+}

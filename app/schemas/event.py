@@ -56,3 +56,12 @@ class NormalizedEvent(BaseModel):
     message: Optional[str] = None
     fields: Dict[str, Any] = Field(default_factory=dict)
     tags: List[str] = Field(default_factory=list)
+    
+    # Enrichment fields
+    enriched: bool = False
+    src_asset: Optional[Dict[str, Any]] = None
+    dst_asset: Optional[Dict[str, Any]] = None
+    host_asset: Optional[Dict[str, Any]] = None
+    src_geo: Optional[str] = None
+    dst_geo: Optional[str] = None
+    ioc_hits: Optional[List[Dict[str, Any]]] = None
