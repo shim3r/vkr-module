@@ -1,0 +1,32 @@
+[
+  {
+    "asset_id": "vpn-01",
+    "name": "VPN Gateway",
+    "host": "vpn-01",
+    "ips": ["10.0.0.1", "10.0.0.10"],
+    "criticality": 5,
+    "owner": "IT",
+    "zone": "DMZ",
+    "tags": ["vpn", "perimeter"]
+  },
+  {
+    "asset_id": "ad-01",
+    "name": "Active Directory",
+    "host": "ad-01",
+    "ips": ["10.0.1.10"],
+    "criticality": 5,
+    "owner": "IT-Sec",
+    "zone": "CORE",
+    "tags": ["ad", "tier0"]
+  },
+  {
+    "asset_id": "ws-007",
+    "name": "Finance Workstation",
+    "host": "ws-007",
+    "ips": ["10.0.2.77"],
+    "criticality": 3,
+    "owner": "Finance",
+    "zone": "LAN",
+    "tags": ["endpoint"]
+  }
+]
