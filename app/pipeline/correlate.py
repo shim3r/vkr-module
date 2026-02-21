@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Tuple
+from uuid import uuid4
 
 from app.services.alerts_store import add_alert
 from app.services.events_store import all_events
@@ -746,6 +747,7 @@ def correlate_lateral_movement(window_seconds: int = 300) -> Tuple[bool, Dict]:
 def _store_incident_and_alert(inc: Dict, priority: str, risk: int, src_ip: str = "", dst_ip: str = "", user: str = "") -> None:
     add_incident(inc)
     add_alert({
+        "alert_id": f"AL-{uuid4().hex[:12].upper()}",
         "raw_id": None,
         "priority": priority,
         "risk": risk,

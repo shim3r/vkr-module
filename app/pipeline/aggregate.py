@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 
 from app.services.aggregates_store import get_aggregate, upsert_aggregate
 
-BUCKET_SECONDS = 30  # 5 minutes
+BUCKET_SECONDS = 300  # 5 minutes
 
 # Priority ordering (higher is worse)
 PRIORITY_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
