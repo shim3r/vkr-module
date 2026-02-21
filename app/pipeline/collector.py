@@ -1,5 +1,6 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from app.pipeline.normalize import normalize
@@ -11,12 +12,51 @@ from app.pipeline.correlate import run_correlation
 from app.services.alerts_store import add_alert
 from app.services.events_store import add_event
 
-from app.config import RAW_DIR, NORMALIZED_DIR
+from app.config import (
+    RAW_DIR,
+    NORMALIZED_DIR,
+    RAW_RETENTION_DAYS,
+    RAW_MAX_FILES,
+    RAW_CLEANUP_EVERY,
+)
 
+
+
+_raw_ingest_count = 0
 
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _raw_cleanup() -> None:
+    """Очистка хранилища сырых событий (архив/форензика): по сроку хранения и лимиту файлов."""
+    if not RAW_DIR.exists():
+        return
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=RAW_RETENTION_DAYS)
+    cutoff_ts = cutoff.timestamp()
+    files: list[tuple[Path, float]] = []
+    for p in RAW_DIR.glob("*.json"):
+        try:
+            mtime = p.stat().st_mtime
+            if mtime < cutoff_ts:
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
+            else:
+                files.append((p, mtime))
+        except OSError:
+            pass
+    if len(files) <= RAW_MAX_FILES:
+        return
+    files.sort(key=lambda x: x[1])
+    for p, _ in files[: len(files) - RAW_MAX_FILES]:
+        try:
+            p.unlink()
+        except OSError:
+            pass
 
 
 async def ingest_event(payload: dict) -> dict:
@@ -41,12 +81,16 @@ async def ingest_event(payload: dict) -> dict:
         "payload": payload,
     }
 
-    # 1) Raw Events Store
+    # 1) Raw Events Store (архив/форензика)
     out_path = RAW_DIR / f"{raw_id}.json"
     out_path.write_text(
         json.dumps(record, ensure_ascii=False, indent=2),
         encoding="utf-8"
     )
+    global _raw_ingest_count
+    _raw_ingest_count += 1
+    if _raw_ingest_count % RAW_CLEANUP_EVERY == 0:
+        _raw_cleanup()
 
     # 2) Нормализация (CEF/CSV/JSON/text → NormalizedEvent)
     normalized = normalize(

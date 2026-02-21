@@ -1,18 +1,17 @@
 from __future__ import annotations
 
+import json
+import threading
 from collections import deque
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Deque, Dict, List, Optional
 
-import json
-from pathlib import Path
-
 try:
-    # Preferred (SIEM-style) path
-    from app.config import INCIDENTS_DIR
+    from app.config import INCIDENTS_DIR, WEBHOOK_URL
 except Exception:
-    # Fallback for older layouts
     INCIDENTS_DIR = Path("data/incidents")
+    WEBHOOK_URL = None
 
 
 # In-memory store for incidents (demo mode)
@@ -74,6 +73,24 @@ def _sla_by_severity(sev: str) -> int:
     return 1440
 
 
+def _send_webhook(incident: Dict) -> None:
+    """Отправка уведомления в интеграционный слой (REST/Webhook) при создании инцидента."""
+    if not WEBHOOK_URL:
+        return
+    payload = dict(incident)
+
+    def _post() -> None:
+        try:
+            import httpx
+            with httpx.Client(timeout=10.0) as client:
+                client.post(WEBHOOK_URL, json=payload)
+        except Exception:
+            pass  # не ломаем создание инцидента из-за webhook
+
+    t = threading.Thread(target=_post, daemon=True)
+    t.start()
+
+
 def add_incident(inc: Dict) -> Dict:
     """Add a new incident to the store.
 
@@ -104,6 +121,7 @@ def add_incident(inc: Dict) -> Dict:
 
     _INCIDENTS.appendleft(stored)
     _persist_incident(stored)
+    _send_webhook(stored)
     return stored
 
 

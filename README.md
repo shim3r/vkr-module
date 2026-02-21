@@ -25,10 +25,19 @@
 - **VPN bruteforce**: серия `VPN_LOGIN_FAIL` от одного `src_ip` за окно времени.
 
 ### Способ запуска проекта
+
+**Обязательно** запускайте из корня репозитория (где лежит `app/` и `requirements.txt`):
+
 ```bash
 cd ~/Desktop/vkr-module
-source .venv/bin/activate
-python -m uvicorn app.main:app --reload
+source .venv/bin/activate   # или: .venv/bin/activate на Windows в Git Bash
+python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Если порт 8000 занят, укажите другой: `--port 8001`. Или используйте скрипт:
+
+```bash
+./run.sh
 ```
 ### Структура проекта
 

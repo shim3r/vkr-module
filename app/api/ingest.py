@@ -1,4 +1,8 @@
+import json
+
 from fastapi import APIRouter, Body, UploadFile, File, HTTPException
+
+from app.config import RAW_DIR
 from app.pipeline.collector import ingest_event
 
 router = APIRouter(tags=["ingest"])
@@ -69,3 +73,42 @@ async def ingest_file(
 
     result = await ingest_event(payload)
     return {"status": "ok", "result": result}
+
+
+@router.get("/raw")
+async def list_raw(limit: int = 100):
+    """
+    Список сырых событий (архив/форензика). Возвращает raw_id и received_at.
+    """
+    if not RAW_DIR.exists():
+        return {"items": [], "total": 0}
+    items = []
+    for p in sorted(RAW_DIR.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True):
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            items.append({
+                "raw_id": data.get("raw_id", p.stem),
+                "received_at": data.get("received_at"),
+            })
+        except Exception:
+            continue
+        if len(items) >= limit:
+            break
+    return {"items": items, "total": len(items)}
+
+
+@router.get("/raw/{raw_id}")
+async def get_raw(raw_id: str):
+    """
+    Одно сырое событие по raw_id (для форензики).
+    """
+    if not raw_id.replace("-", "").replace("_", "").isalnum() or len(raw_id) > 64:
+        raise HTTPException(status_code=400, detail="Invalid raw_id")
+    path = RAW_DIR / f"{raw_id}.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Raw event not found")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
