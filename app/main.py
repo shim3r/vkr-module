@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.responses import Response
 
@@ -6,8 +8,20 @@ from app.api.alerts import router as alerts_router
 from app.api.incidents import router as incidents_router
 from app.api.sim import router as sim_router
 from app.api.ui import router as ui_router
+from app.pipeline.pipeline import get_pipeline
 
-app = FastAPI(title="VKR SIEM Module (Prototype)")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: launch async pipeline workers
+    pipeline = get_pipeline()
+    await pipeline.start()
+    yield
+    # Shutdown: gracefully stop pipeline workers
+    await pipeline.stop()
+
+
+app = FastAPI(title="VKR SIEM Module (Prototype)", lifespan=lifespan)
 
 # UI at site root (/)
 app.include_router(ui_router)

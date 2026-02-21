@@ -2,127 +2,92 @@ from __future__ import annotations
 
 from typing import Any, Dict, Tuple
 
-# Weight of the telemetry source (coarse trust/importance signal)
-SOURCE_WEIGHT = {"firewall": 10, "av": 8, "edr": 6, "iam": 5, "arm": 3}
+# Source criticality weights (scale 1-10) per TO-BE architecture
+SOURCE_CRITICALITY = {
+    "firewall": 10,
+    "av": 8,
+    "edr": 6,
+    "iam": 5,
+    "arm": 4,
+}
 
-# Text markers that should increase risk when found in raw/normalized text (MVP heuristic)
-CRITICAL_MARKERS = [
-    "VPN_LOGIN_FAIL",
-    "PORTSCAN",
-    "AV_DETECT",
-    "MALWARE_DETECT",
-    "credential_dumping",
-    "ransom",
-    "C2",
-    "4688",
-    "4697",
-    "GROUP_ADD",
-    "ACCOUNT_LOCK",
-]
+# Weighted formula coefficients
+W_SOURCE = 0.4
+W_ASSET = 0.3
+W_SEVERITY = 0.3
 
 
-def _as_text(data: Any) -> str:
-    if isinstance(data, dict):
-        return " ".join(map(str, data.values()))
-    if isinstance(data, (list, tuple)):
-        return " ".join(map(str, data))
-    return str(data or "")
+def _get_source_criticality(source_type: str) -> float:
+    """Return source criticality on scale 1-10."""
+    src = (source_type or "unknown").lower()
+    return float(SOURCE_CRITICALITY.get(src, 3))
 
 
-def _severity_score(sev: Any) -> int:
-    """Normalize severity (expected 1..10) into 0..40 points."""
-    try:
-        s = int(sev)
-    except Exception:
-        s = 0
-    s = max(0, min(10, s))
-    return int(round(s * 4))
+def _get_asset_criticality(payload: Dict[str, Any]) -> float:
+    """Return asset criticality on scale 1-10 (CMDB stores 1-5, normalized *2)."""
+    crit = None
+    # Direct field
+    if payload.get("asset_criticality") is not None:
+        crit = payload.get("asset_criticality")
+    else:
+        # Pull from enriched asset objects
+        for k in ("dst_asset", "host_asset", "src_asset"):
+            a = payload.get(k)
+            if isinstance(a, dict) and a.get("criticality") is not None:
+                crit = a.get("criticality")
+                break
 
+    if crit is None:
+        return 2.0  # default low criticality
 
-def _asset_criticality_score(crit: Any) -> int:
-    """Normalize asset criticality (expected 1..5) into 0..25 points."""
     try:
         c = int(crit)
     except Exception:
-        c = 0
-    c = max(0, min(5, c))
-    return int(round(c * 5))
+        return 2.0
+
+    c = max(1, min(5, c))
+    return float(c * 2)  # normalize 1-5 -> 2-10
 
 
-def _ioc_score(ioc_hits: Any) -> int:
-    """IOC hits (list or dict) -> 0..30 points."""
-    if not ioc_hits:
-        return 0
-    # If list, count items. If dict, count keys/entries.
-    if isinstance(ioc_hits, list):
-        n = len(ioc_hits)
-    elif isinstance(ioc_hits, dict):
-        n = len(ioc_hits)
-    else:
-        n = 1
-    return min(30, n * 10)
+def _get_event_severity(payload: Dict[str, Any]) -> float:
+    """Return event severity on scale 1-10."""
+    try:
+        s = int(payload.get("severity") or 1)
+    except Exception:
+        s = 1
+    return float(max(1, min(10, s)))
 
 
-def _marker_score(text: str) -> int:
-    hits = sum(1 for m in CRITICAL_MARKERS if m.lower() in text.lower())
-    return min(30, hits * 12)
+def score(payload: Dict[str, Any]) -> Tuple[float, str, bool]:
+    """Compute risk score using the TO-BE weighted formula.
 
+    risk = (source_criticality * 0.4) + (asset_criticality * 0.3) + (event_severity * 0.3)
 
-def score(payload: Dict[str, Any]) -> Tuple[int, str, bool]:
-    """Compute risk score and priority.
+    Scale: 1.0 - 10.0
 
-    Supports both the legacy ingest payload (source_type + data) and
-    enriched normalized events (source_type + severity + *_asset + ioc_hits + tags).
+    Thresholds:
+      > 8.5 -> CRITICAL
+      > 7.0 -> HIGH
+      > 4.0 -> MEDIUM
+      <= 4.0 -> LOW
+
+    Returns (risk_score, priority, is_critical).
     """
-    src = (payload.get("source_type") or "unknown").lower()
-    base = SOURCE_WEIGHT.get(src, 2)
+    source_crit = _get_source_criticality(payload.get("source_type", ""))
+    asset_crit = _get_asset_criticality(payload)
+    event_sev = _get_event_severity(payload)
 
-    # Legacy field (raw ingest) OR normalized event fields
-    data = payload.get("data")
-    message = payload.get("message")
+    risk = (source_crit * W_SOURCE) + (asset_crit * W_ASSET) + (event_sev * W_SEVERITY)
+    risk = round(risk, 2)
 
-    text = " ".join(
-        t
-        for t in (
-            _as_text(data),
-            _as_text(message),
-            _as_text(payload.get("event_type")),
-            _as_text(payload.get("action")),
-            _as_text(payload.get("status")),
-            _as_text(payload.get("tags")),
-        )
-        if t
-    )
-
-    # Enrichment-aware signals
-    sev_points = _severity_score(payload.get("severity"))
-
-    # Pull asset criticality from the best available enriched field
-    # (dst_asset is usually the protected target, host_asset is the generating host)
-    crit = None
-    for k in ("dst_asset", "host_asset", "src_asset"):
-        a = payload.get(k)
-        if isinstance(a, dict) and a.get("criticality") is not None:
-            crit = a.get("criticality")
-            break
-    asset_points = _asset_criticality_score(crit)
-
-    ioc_points = _ioc_score(payload.get("ioc_hits"))
-    marker_points = _marker_score(text)
-
-    # Base source weight contributes up to ~30 points
-    base_points = min(30, base * 3)
-
-    # Total risk (0..100)
-    risk = min(100, base_points + sev_points + asset_points + ioc_points + marker_points)
-
-    if risk >= 70:
-        priority = "critical"
-    elif risk >= 45:
-        priority = "high"
-    elif risk >= 25:
-        priority = "medium"
+    if risk > 8.5:
+        priority = "CRITICAL"
+    elif risk > 7.0:
+        priority = "HIGH"
+    elif risk > 4.0:
+        priority = "MEDIUM"
     else:
-        priority = "low"
+        priority = "LOW"
 
-    return risk, priority, priority in ("high", "critical")
+    is_critical = priority in ("HIGH", "CRITICAL")
+    return risk, priority, is_critical

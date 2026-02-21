@@ -16,5 +16,9 @@ RAW_RETENTION_DAYS = int(os.getenv("RAW_RETENTION_DAYS", "14"))
 RAW_MAX_FILES = int(os.getenv("RAW_MAX_FILES", "5000"))
 RAW_CLEANUP_EVERY = int(os.getenv("RAW_CLEANUP_EVERY", "50"))
 
+# Pipeline queue configuration
+PIPELINE_QUEUE_SIZE = int(os.getenv("PIPELINE_QUEUE_SIZE", "1000"))
+PIPELINE_WORKERS = int(os.getenv("PIPELINE_WORKERS", "1"))
+
 # Интеграционный слой: webhook при создании инцидента (Telegram/Email/ServiceDesk)
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").strip() or None

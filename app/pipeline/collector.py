@@ -1,3 +1,14 @@
+"""
+Collector module — raw event ingestion entry point.
+
+In the TO-BE architecture, the collector only handles:
+  1) Raw event storage (forensic archive)
+  2) Pushing to the async pipeline queue
+
+All normalization, enrichment, scoring, aggregation, correlation
+are handled by downstream pipeline stages.
+"""
+
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -19,7 +30,6 @@ from app.config import (
     RAW_MAX_FILES,
     RAW_CLEANUP_EVERY,
 )
-
 
 
 _raw_ingest_count = 0
@@ -61,18 +71,34 @@ def _raw_cleanup() -> None:
 
 async def ingest_event(payload: dict) -> dict:
     """
-    Центральная функция приёма и первичной обработки события:
-      1) сохраняем raw (для аудита/форензики)
-      2) нормализуем в единую модель NormalizedEvent
-      3) сохраняем нормализованное событие в events store (для корреляции)
-      4) считаем риск/приоритет
-      5) если событие критичное — добавляем в alerts feed
-      6) запускаем корреляцию (правила) и возвращаем найденные инциденты
+    Ingest a raw event through the async pipeline.
+
+    Tries to use the Pipeline (queue-based) if started,
+    otherwise falls back to synchronous processing.
     """
+    from app.pipeline.pipeline import get_pipeline
+
+    pipeline = get_pipeline()
+
+    # If pipeline workers are running, use async queue path
+    if pipeline._running:
+        result = await pipeline.push_raw(payload)
+        # Periodic raw cleanup
+        global _raw_ingest_count
+        _raw_ingest_count += 1
+        if _raw_ingest_count % RAW_CLEANUP_EVERY == 0:
+            _raw_cleanup()
+        return result
+
+    # Fallback: synchronous processing (when pipeline not started)
+    return await _ingest_sync(payload)
+
+
+async def _ingest_sync(payload: dict) -> dict:
+    """Synchronous fallback — direct function call chain (legacy mode)."""
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     NORMALIZED_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Primary key for this event (used to link raw <-> normalized)
     raw_id = str(uuid4())
 
     record = {
@@ -81,7 +107,7 @@ async def ingest_event(payload: dict) -> dict:
         "payload": payload,
     }
 
-    # 1) Raw Events Store (архив/форензика)
+    # 1) Raw Events Store
     out_path = RAW_DIR / f"{raw_id}.json"
     out_path.write_text(
         json.dumps(record, ensure_ascii=False, indent=2),
@@ -92,37 +118,33 @@ async def ingest_event(payload: dict) -> dict:
     if _raw_ingest_count % RAW_CLEANUP_EVERY == 0:
         _raw_cleanup()
 
-    # 2) Нормализация (CEF/CSV/JSON/text → NormalizedEvent)
+    # 2) Normalize
     normalized = normalize(
         payload=payload,
         raw_id=raw_id,
         received_at_iso=record["received_at"],
     )
 
-    normalized_dict = normalized.model_dump(mode="json") # Pydantic v2
+    normalized_dict = normalized.model_dump(mode="json")
 
-    # 2.1) Обогащение (CMDB/context) — SIEM-style enrichment
+    # 3) Enrich
     normalized_dict = enrich_dict(normalized_dict)
 
-    # 3) Скоринг / приоритизация (на нормализованном + обогащённом событии)
+    # 4) Score
     risk, priority, is_critical = score(normalized_dict)
-
-    # Persist risk/priority back into normalized record (useful for searches/correlation)
     normalized_dict["risk"] = risk
     normalized_dict["priority"] = priority
 
-
-    # 3.1) Агрегация (5-минутные бакеты, dedup)
+    # 5) Aggregate
     update_aggregate(normalized_dict)
 
-
-    # 4) Сохраняем нормализованное событие для последующей корреляции
+    # 6) Store event
     add_event(normalized_dict)
 
-    # Save normalized event to disk (SIEM-style storage)
+    # Save normalized event to disk
     normalized_path = NORMALIZED_DIR / f"{raw_id}.json"
     normalized_path.write_text(
-        json.dumps(normalized_dict, ensure_ascii=False, indent=2),
+        json.dumps(normalized_dict, ensure_ascii=False, indent=2, default=str),
         encoding="utf-8",
     )
 
@@ -135,7 +157,7 @@ async def ingest_event(payload: dict) -> dict:
         "normalized_event": normalized_dict,
     }
 
-    # 5) Критические события — в ленту alerts
+    # 7) Alerts for critical events
     if is_critical:
         add_alert({
             "alert_id": f"AL-{uuid4().hex[:12].upper()}",
@@ -152,7 +174,7 @@ async def ingest_event(payload: dict) -> dict:
             "snippet": str(payload.get("data", ""))[:200],
         })
 
-    # 6) Корреляция (правила SOC-подобного уровня)
+    # 8) Correlation
     incidents = run_correlation()
     result["correlation_incidents"] = incidents
     print(

@@ -1,17 +1,21 @@
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+from uuid import uuid4
 
 
 class NormalizedEvent(BaseModel):
     # ----------------------------
-    # Identifiers
+    # Identifiers (TO-BE schema)
     # ----------------------------
-    event_id: str
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    raw_event_id: str  # reference to raw event store
+    event_id: str = ""  # backward compat alias (= raw_event_id)
 
     # ----------------------------
     # Timestamps
     # ----------------------------
+    timestamp_utc: datetime  # explicit UTC timestamp (TO-BE requirement)
     received_at: datetime
     parsed_at: datetime
 
@@ -35,6 +39,7 @@ class NormalizedEvent(BaseModel):
     # ----------------------------
     src_ip: Optional[str] = None
     dst_ip: Optional[str] = None
+    dest_ip: Optional[str] = None  # alias for dst_ip (TO-BE compliance)
     src_port: Optional[int] = None
     dst_port: Optional[int] = None
 
@@ -56,7 +61,7 @@ class NormalizedEvent(BaseModel):
     message: Optional[str] = None
     fields: Dict[str, Any] = Field(default_factory=dict)
     tags: List[str] = Field(default_factory=list)
-    
+
     # Enrichment fields
     enriched: bool = False
     src_asset: Optional[Dict[str, Any]] = None

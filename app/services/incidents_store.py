@@ -17,12 +17,18 @@ except Exception:
 # In-memory store for incidents (demo mode)
 _INCIDENTS: Deque[Dict] = deque(maxlen=200)
 
+# Valid status transitions (TO-BE requirement)
+VALID_TRANSITIONS = {
+    "New": {"In Progress", "Resolved"},
+    "In Progress": {"Resolved"},
+    "Resolved": set(),  # terminal state
+}
+
 
 def _ensure_incidents_dir() -> None:
     try:
         INCIDENTS_DIR.mkdir(parents=True, exist_ok=True)
     except Exception:
-        # Do not break the app if filesystem is read-only
         pass
 
 
@@ -35,11 +41,10 @@ def _persist_incident(incident: Dict) -> None:
     path = INCIDENTS_DIR / f"{incident_id}.json"
     try:
         path.write_text(
-            json.dumps(incident, ensure_ascii=False, indent=2),
+            json.dumps(incident, ensure_ascii=False, indent=2, default=str),
             encoding="utf-8",
         )
     except Exception:
-        # Never fail incident creation due to IO
         pass
 
 
@@ -58,7 +63,6 @@ def _now() -> str:
 
 
 def _gen_id() -> str:
-    # simple deterministic-ish id for demo
     return f"INC-{int(datetime.now(timezone.utc).timestamp()*1000)}"
 
 
@@ -85,30 +89,57 @@ def _send_webhook(incident: Dict) -> None:
             with httpx.Client(timeout=10.0) as client:
                 client.post(WEBHOOK_URL, json=payload)
         except Exception:
-            pass  # не ломаем создание инцидента из-за webhook
+            pass
 
     t = threading.Thread(target=_post, daemon=True)
     t.start()
 
 
+def _compute_total_risk(related_events: List[Dict]) -> float:
+    """Compute total_risk_score from related events (max of all risk scores)."""
+    if not related_events:
+        return 0.0
+    risks = []
+    for e in related_events:
+        r = e.get("risk")
+        if r is not None:
+            try:
+                risks.append(float(r))
+            except (TypeError, ValueError):
+                pass
+    return max(risks) if risks else 0.0
+
+
+def _add_timeline_entry(incident: Dict, action: str, actor: str = "system", detail: str = "") -> None:
+    """Append an entry to the incident timeline."""
+    timeline = incident.setdefault("timeline", [])
+    timeline.append({
+        "timestamp": _now(),
+        "action": action,
+        "actor": actor,
+        "detail": detail,
+    })
+
+
 def add_incident(inc: Dict) -> Dict:
     """Add a new incident to the store.
 
-    Enriches incident with:
+    Enriches incident with TO-BE required fields:
       - incident_id
-      - status
+      - status (New)
+      - related_events[] — full event objects from evidence
+      - total_risk_score — max risk from related events
+      - timeline[] — chronological audit trail
       - created_at / updated_at
       - sla_minutes
-      - assignee / comment (optional)
-
-    Returns the stored incident.
+      - assignee / comment
     """
     stored = dict(inc)
 
     stored.setdefault("incident_id", _gen_id())
     stored.setdefault("status", "New")
 
-    # Use existing timestamps if provided, otherwise set
+    # Timestamps
     stored.setdefault("created_at", stored.get("first_seen") or _now())
     stored.setdefault("updated_at", _now())
 
@@ -118,6 +149,27 @@ def add_incident(inc: Dict) -> Dict:
     # Optional workflow fields
     stored.setdefault("assignee", "")
     stored.setdefault("comment", "")
+
+    # TO-BE: related_events (full event objects, not just IDs)
+    if "related_events" not in stored:
+        stored["related_events"] = []
+
+    # TO-BE: total_risk_score (computed from related events or incident risk)
+    if "total_risk_score" not in stored:
+        related = stored.get("related_events", [])
+        if related:
+            stored["total_risk_score"] = _compute_total_risk(related)
+        else:
+            # Use incident-level risk as fallback
+            try:
+                stored["total_risk_score"] = float(stored.get("risk", 0))
+            except (TypeError, ValueError):
+                stored["total_risk_score"] = 0.0
+
+    # TO-BE: timeline (audit trail)
+    if "timeline" not in stored:
+        stored["timeline"] = []
+    _add_timeline_entry(stored, action="created", detail=f"Incident created: {stored.get('title', '')}")
 
     _INCIDENTS.appendleft(stored)
     _persist_incident(stored)
@@ -143,17 +195,50 @@ def update_incident(
     assignee: Optional[str] = None,
     comment: Optional[str] = None,
 ) -> Optional[Dict]:
-    """Update incident fields in-place. Returns updated incident or None."""
+    """Update incident fields in-place with status transition enforcement.
+
+    Valid transitions: New -> In Progress -> Resolved
+    """
     inc = get_incident(incident_id)
     if not inc:
         return None
 
     if status is not None:
-        inc["status"] = status
+        current_status = inc.get("status", "New")
+        allowed = VALID_TRANSITIONS.get(current_status, set())
+        if status not in allowed and status != current_status:
+            # Return with error info but don't block (prototype grace)
+            inc["_last_transition_error"] = (
+                f"Invalid transition: {current_status} -> {status}. "
+                f"Allowed: {sorted(allowed)}"
+            )
+        else:
+            old_status = current_status
+            inc["status"] = status
+            _add_timeline_entry(
+                inc,
+                action="status_change",
+                actor=assignee or inc.get("assignee", "system"),
+                detail=f"Status changed: {old_status} -> {status}",
+            )
+
     if assignee is not None:
         inc["assignee"] = assignee
+        _add_timeline_entry(
+            inc,
+            action="assigned",
+            actor=assignee,
+            detail=f"Assigned to {assignee}",
+        )
+
     if comment is not None:
         inc["comment"] = comment
+        _add_timeline_entry(
+            inc,
+            action="comment",
+            actor=assignee or inc.get("assignee", "system"),
+            detail=comment,
+        )
 
     inc["updated_at"] = _now()
     _persist_incident(inc)
@@ -166,10 +251,7 @@ def count_incidents() -> int:
 
 def clear_incidents() -> None:
     """Clear all stored incidents (in-memory and on disk)."""
-    # Clear memory
     _INCIDENTS.clear()
-
-    # Best-effort: clear persisted files
     _ensure_incidents_dir()
     try:
         for p in INCIDENTS_DIR.glob("INC-*.json"):

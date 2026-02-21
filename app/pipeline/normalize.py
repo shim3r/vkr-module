@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from typing import Dict, Any, Tuple, Optional
+from uuid import uuid4
 import re
 
 from app.schemas.event import NormalizedEvent
@@ -237,9 +238,15 @@ def normalize(payload: Dict[str, Any], raw_id: str, received_at_iso: str) -> Nor
         if base.get("technique"):
             tags.append(f"tech:{str(base.get('technique')).lower()}")
 
+    received_dt = to_utc(received_at_iso)
+    dst_ip_val = base.get("dst_ip")
+
     return NormalizedEvent(
+        id=str(uuid4()),
+        raw_event_id=raw_id,
         event_id=raw_id,
-        received_at=to_utc(received_at_iso),
+        timestamp_utc=received_dt,
+        received_at=received_dt,
         parsed_at=datetime.now(timezone.utc),
         source_type=source,
         format=fmt,
@@ -247,7 +254,8 @@ def normalize(payload: Dict[str, Any], raw_id: str, received_at_iso: str) -> Nor
         event_category=category,
         severity=severity,
         src_ip=base.get("src_ip"),
-        dst_ip=base.get("dst_ip"),
+        dst_ip=dst_ip_val,
+        dest_ip=dst_ip_val,
         src_port=to_int(base.get("src_port")),
         dst_port=to_int(base.get("dst_port")),
         host=base.get("host"),

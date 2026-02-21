@@ -741,6 +741,279 @@ def correlate_lateral_movement(window_seconds: int = 300) -> Tuple[bool, Dict]:
 
 
 # -------------------------------------------------
+# 5) Chain: VPN Brute -> VPN Success -> Process Start
+# (Multi-stage: brute force from src_ip, then login success from same IP, then EDR process activity)
+# -------------------------------------------------
+
+def correlate_vpn_brute_success_process(window_seconds: int = 300, fail_threshold: int = 3) -> Tuple[bool, Dict]:
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(seconds=window_seconds)
+    events = all_events()
+
+    vpn_fails: Dict[str, List[Dict]] = {}
+    vpn_successes: Dict[str, List[Dict]] = {}
+    process_starts: List[Dict] = []
+
+    for e in events:
+        ra = e.get("received_at")
+        if not ra:
+            continue
+        try:
+            ra_dt = _to_dt(ra)
+        except Exception:
+            continue
+        if ra_dt is None or ra_dt < window_start:
+            continue
+
+        et = str(e.get("event_type") or "")
+        src_ip = e.get("src_ip") or ""
+
+        if et == "VPN_LOGIN_FAIL" and src_ip:
+            vpn_fails.setdefault(src_ip, []).append(e)
+        elif et == "VPN_LOGIN_SUCCESS" and src_ip:
+            vpn_successes.setdefault(src_ip, []).append(e)
+        elif et in ("PROCESS_START", "EDR_SUSPICIOUS_PROCESS") and e.get("host"):
+            process_starts.append(e)
+
+    if not vpn_fails or not vpn_successes:
+        return False, {}
+
+    for src_ip, fails in vpn_fails.items():
+        if len(fails) < fail_threshold:
+            continue
+        successes = vpn_successes.get(src_ip, [])
+        if not successes:
+            continue
+
+        # Check that success came after at least some fails
+        fail_times = [_to_dt(f["received_at"]) for f in fails if _to_dt(f.get("received_at"))]
+        success_times = [_to_dt(s["received_at"]) for s in successes if _to_dt(s.get("received_at"))]
+        if not fail_times or not success_times:
+            continue
+        earliest_fail = min(fail_times)
+        latest_success = max(success_times)
+        if latest_success <= earliest_fail:
+            continue
+
+        # Look for process/EDR activity linked to the user who logged in
+        success_users = {s.get("user") for s in successes if s.get("user")}
+        related_process = [
+            p for p in process_starts
+            if p.get("user") in success_users or (not p.get("user"))
+        ]
+
+        key = f"VPN_BRUTE_SUCCESS_PROCESS:{src_ip}:{window_seconds}"
+        if _seen(key):
+            return False, {}
+
+        all_evidence = fails + successes + related_process
+        evidence_ids = [e.get("event_id") for e in all_evidence if e.get("event_id")]
+        users = sorted(success_users)
+
+        incident = {
+            "type": "VPN_BRUTE_SUCCESS_PROCESS",
+            "title": f"Multi-stage attack: VPN brute force -> success -> process activity from {src_ip}",
+            "src_ip": src_ip,
+            "users": users,
+            "fail_count": len(fails),
+            "success_count": len(successes),
+            "process_count": len(related_process),
+            "stages": ["VPN_LOGIN_FAIL", "VPN_LOGIN_SUCCESS", "PROCESS_START/EDR"],
+            "count": len(all_evidence),
+            "window_seconds": window_seconds,
+            "first_seen": min(_to_dt(e["received_at"]) for e in all_evidence if _to_dt(e.get("received_at"))).isoformat(),
+            "last_seen": max(_to_dt(e["received_at"]) for e in all_evidence if _to_dt(e.get("received_at"))).isoformat(),
+            "severity": "critical",
+            "priority": "critical",
+            "risk": 9.8,
+            "asset_id": fails[0].get("asset_id"),
+            "asset_criticality": fails[0].get("asset_criticality"),
+            "asset_owner": fails[0].get("asset_owner"),
+            "asset_zone": fails[0].get("asset_zone"),
+            "evidence_event_ids": evidence_ids,
+            "related_events": all_evidence[:50],
+        }
+        return True, incident
+
+    return False, {}
+
+
+# -------------------------------------------------
+# 6) Chain: AV Detect -> EDR Suspicious Process (cross-source correlation)
+# (AV detects malware on host, then EDR sees suspicious process on same host)
+# -------------------------------------------------
+
+def correlate_av_edr_chain(window_seconds: int = 300) -> Tuple[bool, Dict]:
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(seconds=window_seconds)
+    events = all_events()
+
+    av_detections: Dict[str, List[Dict]] = {}
+    edr_suspicious: Dict[str, List[Dict]] = {}
+
+    for e in events:
+        ra = e.get("received_at")
+        if not ra:
+            continue
+        try:
+            ra_dt = _to_dt(ra)
+        except Exception:
+            continue
+        if ra_dt is None or ra_dt < window_start:
+            continue
+
+        et = str(e.get("event_type") or "")
+        host = e.get("host") or ""
+        if not host:
+            continue
+
+        if et in ("AV_DETECT", "MALWARE_DETECT"):
+            av_detections.setdefault(host, []).append(e)
+        elif et in ("EDR_SUSPICIOUS_PROCESS", "EDR_CREDENTIAL_DUMP", "EDR_RANSOMWARE_BEHAVIOR", "EDR_LATERAL_TOOL", "PROCESS_START"):
+            edr_suspicious.setdefault(host, []).append(e)
+
+    if not av_detections or not edr_suspicious:
+        return False, {}
+
+    for host, av_events in av_detections.items():
+        edr_events = edr_suspicious.get(host, [])
+        if not edr_events:
+            continue
+
+        key = f"AV_EDR_CHAIN:{host}:{window_seconds}"
+        if _seen(key):
+            return False, {}
+
+        all_evidence = av_events + edr_events
+        evidence_ids = [e.get("event_id") for e in all_evidence if e.get("event_id")]
+        users = sorted({e.get("user") for e in all_evidence if e.get("user")})
+
+        incident = {
+            "type": "AV_EDR_CHAIN",
+            "title": f"Cross-source chain: AV detection + EDR suspicious activity on host {host}",
+            "host": host,
+            "users": users,
+            "av_count": len(av_events),
+            "edr_count": len(edr_events),
+            "stages": ["AV_DETECT", "EDR_SUSPICIOUS"],
+            "count": len(all_evidence),
+            "window_seconds": window_seconds,
+            "first_seen": min(_to_dt(e["received_at"]) for e in all_evidence if _to_dt(e.get("received_at"))).isoformat(),
+            "last_seen": max(_to_dt(e["received_at"]) for e in all_evidence if _to_dt(e.get("received_at"))).isoformat(),
+            "severity": "critical",
+            "priority": "critical",
+            "risk": 9.5,
+            "asset_id": av_events[0].get("asset_id"),
+            "asset_criticality": av_events[0].get("asset_criticality"),
+            "asset_owner": av_events[0].get("asset_owner"),
+            "asset_zone": av_events[0].get("asset_zone"),
+            "evidence_event_ids": evidence_ids,
+            "related_events": all_evidence[:50],
+        }
+        return True, incident
+
+    return False, {}
+
+
+# -------------------------------------------------
+# 7) Chain: Portscan -> Exploit (portscan from src_ip, then suspicious connection/service on target)
+# -------------------------------------------------
+
+def correlate_portscan_exploit(window_seconds: int = 300) -> Tuple[bool, Dict]:
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(seconds=window_seconds)
+    events = all_events()
+
+    portscans: Dict[str, List[Dict]] = {}  # keyed by src_ip
+    exploits: List[Dict] = []  # suspicious follow-up activity
+
+    EXPLOIT_TYPES = {
+        "NETWORK_CONNECTION", "EDR_REMOTE_SERVICE_CREATE",
+        "EDR_LATERAL_TOOL", "EDR_SUSPICIOUS_PROCESS",
+        "CREDENTIAL_DUMP", "EDR_CREDENTIAL_DUMP",
+    }
+
+    for e in events:
+        ra = e.get("received_at")
+        if not ra:
+            continue
+        try:
+            ra_dt = _to_dt(ra)
+        except Exception:
+            continue
+        if ra_dt is None or ra_dt < window_start:
+            continue
+
+        et = str(e.get("event_type") or "")
+        src_ip = e.get("src_ip") or ""
+
+        if et == "PORTSCAN" and src_ip:
+            portscans.setdefault(src_ip, []).append(e)
+        elif et in EXPLOIT_TYPES:
+            exploits.append(e)
+
+    if not portscans or not exploits:
+        return False, {}
+
+    for src_ip, scan_events in portscans.items():
+        # Targets from portscan
+        scanned_targets = set()
+        for s in scan_events:
+            dst = s.get("dst_ip")
+            if dst:
+                scanned_targets.add(dst)
+
+        if not scanned_targets:
+            continue
+
+        # Find exploit activity targeting scanned hosts (from same src or on scanned target)
+        related_exploits = []
+        for ex in exploits:
+            ex_src = ex.get("src_ip") or ""
+            ex_dst = ex.get("dst_ip") or ""
+            ex_host = ex.get("host") or ""
+            # Exploit from scanner IP to a target, or activity on a scanned target
+            if ex_src == src_ip or ex_dst in scanned_targets or ex_host in scanned_targets:
+                related_exploits.append(ex)
+
+        if not related_exploits:
+            continue
+
+        key = f"PORTSCAN_EXPLOIT:{src_ip}:{window_seconds}"
+        if _seen(key):
+            return False, {}
+
+        all_evidence = scan_events + related_exploits
+        evidence_ids = [e.get("event_id") for e in all_evidence if e.get("event_id")]
+
+        incident = {
+            "type": "PORTSCAN_EXPLOIT",
+            "title": f"Multi-stage: Port scan from {src_ip} followed by exploit activity",
+            "src_ip": src_ip,
+            "scanned_targets": sorted(scanned_targets),
+            "scan_count": len(scan_events),
+            "exploit_count": len(related_exploits),
+            "stages": ["PORTSCAN", "EXPLOIT/SERVICE_CREATE"],
+            "count": len(all_evidence),
+            "window_seconds": window_seconds,
+            "first_seen": min(_to_dt(e["received_at"]) for e in all_evidence if _to_dt(e.get("received_at"))).isoformat(),
+            "last_seen": max(_to_dt(e["received_at"]) for e in all_evidence if _to_dt(e.get("received_at"))).isoformat(),
+            "severity": "critical",
+            "priority": "critical",
+            "risk": 9.6,
+            "asset_id": scan_events[0].get("asset_id"),
+            "asset_criticality": scan_events[0].get("asset_criticality"),
+            "asset_owner": scan_events[0].get("asset_owner"),
+            "asset_zone": scan_events[0].get("asset_zone"),
+            "evidence_event_ids": evidence_ids,
+            "related_events": all_evidence[:50],
+        }
+        return True, incident
+
+    return False, {}
+
+
+# -------------------------------------------------
 # Runner: execute all correlation rules
 # -------------------------------------------------
 
@@ -859,6 +1132,44 @@ def run_correlation() -> List[Dict]:
             src_ip="",
             dst_ip=",".join(inc.get("dst_hosts", [])),
             user=inc.get("user", ""),
+        )
+
+    # --- Multi-stage chain scenarios (TO-BE requirements) ---
+
+    found, inc = correlate_vpn_brute_success_process()
+    if found:
+        incidents.append(inc)
+        _store_incident_and_alert(
+            inc,
+            priority="critical",
+            risk=98,
+            src_ip=inc.get("src_ip", ""),
+            dst_ip="",
+            user=",".join(inc.get("users", [])),
+        )
+
+    found, inc = correlate_av_edr_chain()
+    if found:
+        incidents.append(inc)
+        _store_incident_and_alert(
+            inc,
+            priority="critical",
+            risk=95,
+            src_ip="",
+            dst_ip=inc.get("host", ""),
+            user=",".join(inc.get("users", [])),
+        )
+
+    found, inc = correlate_portscan_exploit()
+    if found:
+        incidents.append(inc)
+        _store_incident_and_alert(
+            inc,
+            priority="critical",
+            risk=96,
+            src_ip=inc.get("src_ip", ""),
+            dst_ip=",".join(inc.get("scanned_targets", [])),
+            user="",
         )
 
     return incidents

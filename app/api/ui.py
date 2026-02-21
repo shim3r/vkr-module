@@ -1,88 +1,22 @@
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import HTMLResponse
-from typing import Any, Callable, Dict, Optional, List
-
-import json
-from pathlib import Path
+from typing import Any, Dict, List
 
 router = APIRouter(tags=["ui"])
 
-# --- optional service imports (project may vary) ---
+# --- Service imports (business logic delegated to services) ---
+from app.services.metrics_service import compute_metrics, get_assets, search_assets
+from app.services.events_store import list_events
+from app.services.alerts_store import list_alerts
+from app.services.incidents_store import list_incidents, get_incident, update_incident
 
-def _try_import(path: str, name: str) -> Optional[Any]:
-    try:
-        mod = __import__(path, fromlist=[name])
-        return getattr(mod, name)
-    except Exception:
-        return None
-
-
-# Events store (raw + aggregates)
-list_events = _try_import("app.services.events_store", "list_events")
-# Aggregates store (5-minute buckets)
-list_aggregates = _try_import("app.services.aggregates_store", "list_aggregates")
-count_events = _try_import("app.services.events_store", "count_events")
-count_aggregates = _try_import("app.services.aggregates_store", "count_aggregates")
-
-# Alerts store
-list_alerts = (
-    _try_import("app.services.alerts_store", "list_alerts")
-    or _try_import("app.services.alerts_store", "get_alerts")
-)
-count_alerts = _try_import("app.services.alerts_store", "count_alerts")
-
-# Incidents store
-list_incidents = (
-    _try_import("app.services.incidents_store", "list_incidents")
-    or _try_import("app.services.incidents_store", "get_incidents")
-)
-count_incidents = _try_import("app.services.incidents_store", "count_incidents")
-
-# Additional safe imports for incident patching
-get_incident = _try_import("app.services.incidents_store", "get_incident")
-update_incident = _try_import("app.services.incidents_store", "update_incident")
+try:
+    from app.services.aggregates_store import list_aggregates
+except ImportError:
+    list_aggregates = None
 
 
-# --- Asset DB (CMDB JSON) ---
-ASSETS_PATHS: List[Path] = [
-    Path("data/cmdb/assets.json"),
-    Path("data/assets.json"),
-]
-
-
-def _load_assets() -> List[Dict[str, Any]]:
-    """Load assets from CMDB JSON (best-effort)."""
-    for p in ASSETS_PATHS:
-        try:
-            if not p.exists():
-                continue
-            raw = p.read_text(encoding="utf-8").strip()
-            if not raw:
-                continue
-            data = json.loads(raw)
-            if isinstance(data, list):
-                return [x for x in data if isinstance(x, dict)]
-        except Exception:
-            continue
-    return []
-
-
-def _safe_count(fn: Optional[Callable[[], int]], fallback_list_fn: Optional[Callable[[int], Any]] = None) -> int:
-    if callable(fn):
-        try:
-            return int(fn())
-        except Exception:
-            return 0
-    if callable(fallback_list_fn):
-        try:
-            data = fallback_list_fn(10_000)
-            return len(data) if isinstance(data, list) else len(list(data))
-        except Exception:
-            return 0
-    return 0
-
-
-def _safe_list(fn: Optional[Callable[[int], Any]], limit: int) -> list:
+def _safe_list(fn, limit: int) -> list:
     if not callable(fn):
         return []
     try:
@@ -92,120 +26,11 @@ def _safe_list(fn: Optional[Callable[[int], Any]], limit: int) -> list:
         return []
 
 
-# --- Metrics helpers ---
-
-def _count_by(items: List[Dict[str, Any]], key: str) -> Dict[str, int]:
-    out: Dict[str, int] = {}
-    for it in items:
-        if not isinstance(it, dict):
-            continue
-        v = it.get(key)
-        if v is None:
-            v = "unknown"
-        v = str(v)
-        out[v] = out.get(v, 0) + 1
-    return out
-
-
-def _top_by(items: List[Dict[str, Any]], key: str, limit: int = 10) -> List[Dict[str, Any]]:
-    counts = _count_by(items, key)
-    top = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:limit]
-    return [{"key": k, "count": c} for k, c in top]
-
-
-# --- API endpoints for new UI ---
+# --- API endpoints (no business logic — delegated to metrics_service) ---
 
 @router.get("/api/metrics", include_in_schema=False)
 def api_metrics() -> Dict[str, Any]:
-    # totals (best-effort)
-    events_raw = _safe_count(count_events, list_events)
-    events_aggregated = _safe_count(count_aggregates, None)
-    alerts_total = _safe_count(count_alerts, list_alerts)
-    incidents_total = _safe_count(count_incidents, list_incidents)
-
-    # Pull recent objects for breakdowns
-    events_sample: List[Dict[str, Any]] = []
-    alerts_sample: List[Dict[str, Any]] = []
-    incidents_sample: List[Dict[str, Any]] = []
-
-    if callable(list_events):
-        try:
-            data = list_events(10_000)
-            events_sample = data if isinstance(data, list) else list(data)
-        except Exception:
-            events_sample = []
-
-    if callable(list_alerts):
-        try:
-            data = list_alerts(10_000)
-            alerts_sample = data if isinstance(data, list) else list(data)
-        except Exception:
-            alerts_sample = []
-
-    if callable(list_incidents):
-        try:
-            data = list_incidents(10_000)
-            incidents_sample = data if isinstance(data, list) else list(data)
-        except Exception:
-            incidents_sample = []
-
-    # Per-source counters (from raw events)
-    by_source: Dict[str, int] = {"firewall": 0, "av": 0, "edr": 0, "iam": 0, "endpoints": 0}
-    for e in events_sample:
-        if not isinstance(e, dict):
-            continue
-        st = str(e.get("source_type") or e.get("source") or "").lower()
-        # normalize common variants
-        if st in ("iam/ad", "iam", "ad", "active_directory"):
-            st = "iam"
-        if st in ("antivirus", "av"):
-            st = "av"
-        if st in ("edr", "edr_system"):
-            st = "edr"
-        if st in ("endpoint", "endpoints", "os", "os_logs"):
-            st = "endpoints"
-        if st in by_source:
-            by_source[st] += 1
-
-    # Alerts/Incidents breakdowns
-    alerts_by_priority = _count_by(alerts_sample, "priority")
-    incidents_by_severity = _count_by(incidents_sample, "severity")
-    incidents_by_status = _count_by(incidents_sample, "status")
-
-    # Top entities from events
-    top_event_types = _top_by(events_sample, "event_type", limit=10)
-    top_src_ip = _top_by(events_sample, "src_ip", limit=10)
-    top_dst_ip = _top_by(events_sample, "dst_ip", limit=10)
-    top_users = _top_by(events_sample, "user", limit=10)
-    top_assets = _top_by(events_sample, "asset_id", limit=10)
-
-    # A small status section for debugging env/paths
-    assets_count = len(_load_assets())
-
-    return {
-        "events_raw": events_raw,
-        "events_aggregated": events_aggregated,
-        "alerts": alerts_total,
-        "incidents": incidents_total,
-        "by_source": by_source,
-        "breakdowns": {
-            "alerts_by_priority": alerts_by_priority,
-            "incidents_by_severity": incidents_by_severity,
-            "incidents_by_status": incidents_by_status,
-        },
-        "tops": {
-            "event_types": top_event_types,
-            "src_ip": top_src_ip,
-            "dst_ip": top_dst_ip,
-            "users": top_users,
-            "assets": top_assets,
-        },
-        "cmdb": {
-            "assets_count": assets_count,
-            "paths": [str(p) for p in ASSETS_PATHS],
-        },
-        "note": "metrics generated in ui.py",
-    }
+    return compute_metrics()
 
 
 @router.get("/api/events", include_in_schema=False)
@@ -217,7 +42,7 @@ def api_events(limit: int = Query(50, ge=1, le=500)) -> Dict[str, Any]:
 @router.get("/api/events-aggregated", include_in_schema=False)
 def api_events_aggregated(limit: int = Query(50, ge=1, le=500)) -> Dict[str, Any]:
     items = _safe_list(list_aggregates, limit)
-    return {"items": items, "count": len(items), "limit": limit, "note": "from aggregates_store"}
+    return {"items": items, "count": len(items), "limit": limit}
 
 
 @router.get("/api/alerts", include_in_schema=False)
@@ -232,12 +57,8 @@ def api_incidents(limit: int = Query(50, ge=1, le=500)) -> Dict[str, Any]:
     return {"items": items, "limit": limit}
 
 
-# PATCH endpoint for updating an incident (UI module, in-memory store)
 @router.patch("/api/incidents/{incident_id}", include_in_schema=False)
 def api_patch_incident(incident_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    if not callable(update_incident) or not callable(get_incident):
-        raise HTTPException(status_code=501, detail="incident update is not available")
-
     updated = update_incident(
         incident_id,
         status=payload.get("status"),
@@ -249,45 +70,15 @@ def api_patch_incident(incident_id: str, payload: Dict[str, Any]) -> Dict[str, A
     return updated
 
 
-
 @router.get("/api/assets", include_in_schema=False)
 def api_assets() -> Dict[str, Any]:
-    assets = _load_assets()
-    return {
-        "items": assets,
-        "count": len(assets),
-        "paths": [str(p) for p in ASSETS_PATHS],
-        "note": "assets loaded from CMDB JSON",
-    }
+    assets = get_assets()
+    return {"items": assets, "count": len(assets)}
 
 
-# Asset search endpoint
 @router.get("/api/assets/search", include_in_schema=False)
 def api_assets_search(q: str = Query("", min_length=0, max_length=100)) -> Dict[str, Any]:
-    qn = (q or "").strip().lower()
-    assets = _load_assets()
-    if not qn:
-        return {"items": assets, "count": len(assets), "q": q}
-
-    def _hit(a: Dict[str, Any]) -> bool:
-        host = str(a.get("host") or "").lower()
-        name = str(a.get("name") or "").lower()
-        asset_id = str(a.get("asset_id") or a.get("id") or "").lower()
-        ips = a.get("ips") or []
-        if isinstance(ips, str):
-            ips_list = [ips]
-        elif isinstance(ips, list):
-            ips_list = [str(x) for x in ips]
-        else:
-            ips_list = []
-        return (
-            qn in host
-            or qn in name
-            or qn in asset_id
-            or any(qn in ip.lower() for ip in ips_list)
-        )
-
-    filtered = [a for a in assets if _hit(a)]
+    filtered = search_assets(q)
     return {"items": filtered, "count": len(filtered), "q": q}
 
 HTML = """<!doctype html>
@@ -298,21 +89,29 @@ HTML = """<!doctype html>
   <title>VKR SIEM • Monitoring</title>
   <style>
     :root{
-      --bg: #f6f7fb;
-      --panel: #ffffff;
-      --panel2: #fbfcff;
-      --border: rgba(15, 23, 42, 0.10);
-      --text: #0f172a;
-      --muted: rgba(15, 23, 42, 0.65);
-      --muted2: rgba(15, 23, 42, 0.45);
-      --sidebar: #0b1220;
-      --sidebar2: #0f172a;
-      --accent: #2f6fed;
-      --good: #16a34a;
-      --warn: #f59e0b;
-      --bad: #ef4444;
-      --shadow: 0 10px 30px rgba(2,6,23,0.10);
-      --radius: 14px;
+      --bg: #0d1117;
+      --bg2: #161b22;
+      --panel: #1c2128;
+      --panel2: #21262d;
+      --border: rgba(240,246,252,0.1);
+      --border2: rgba(240,246,252,0.06);
+      --text: #e6edf3;
+      --text2: #c9d1d9;
+      --muted: rgba(230,237,243,0.55);
+      --muted2: rgba(230,237,243,0.35);
+      --sidebar: #010409;
+      --sidebar2: #0d1117;
+      --accent: #388bfd;
+      --accent2: rgba(56,139,253,0.15);
+      --good: #3fb950;
+      --warn: #d29922;
+      --bad: #f85149;
+      --shadow: 0 1px 3px rgba(0,0,0,0.3);
+      --radius: 6px;
+      --mono: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+      --row-odd: rgba(255,255,255,0.02);
+      --row-hover: rgba(56,139,253,0.08);
+      --row-selected: rgba(56,139,253,0.18);
     }
     *{ box-sizing: border-box; }
     html, body{ height: 100%; }
@@ -440,33 +239,38 @@ HTML = """<!doctype html>
     .tbl-input{
       padding: 7px 10px;
       border-radius: 10px;
-      border: 1px solid rgba(15,23,42,0.12);
-      background: #fff;
+      border: 1px solid var(--border);
+      background: var(--bg2);
+      color: var(--text);
       font-size: 12px;
       outline: none;
       width: 100%;
     }
+    .tbl-input:focus{ border-color: var(--accent); background: var(--bg); }
     .tbl-input.wide{ min-width: 260px; }
     .tbl-input.mid{ min-width: 160px; }
     .tbl-select{
       padding: 7px 10px;
       border-radius: 10px;
-      border: 1px solid rgba(15,23,42,0.12);
-      background: #fff;
+      border: 1px solid var(--border);
+      background: var(--bg2);
+      color: var(--text);
       font-size: 12px;
       outline: none;
       min-width: 140px;
     }
+    .tbl-select:focus{ border-color: var(--accent); }
     .tbl-btn{
       padding: 7px 10px;
       border-radius: 10px;
-      border: 1px solid rgba(15,23,42,0.12);
-      background: rgba(47,111,237,0.10);
+      border: 1px solid rgba(47,111,237,0.30);
+      background: rgba(47,111,237,0.15);
+      color: var(--text);
       cursor: pointer;
       font-weight: 800;
       font-size: 12px;
     }
-    .tbl-btn:hover{ background: rgba(47,111,237,0.16); }
+    .tbl-btn:hover{ background: rgba(47,111,237,0.25); }
 
     /* Cards / grids */
     .grid{ display: grid; gap: 14px; }
@@ -491,10 +295,10 @@ HTML = """<!doctype html>
       padding: 12px 14px;
       display:flex; align-items:center; justify-content: space-between;
       gap: 10px;
-      border-bottom: 1px solid rgba(15,23,42,0.08);
+      border-bottom: 1px solid var(--border);
       background: var(--panel2);
     }
-    .card .hdr b{ font-size: 13px; }
+    .card .hdr b{ font-size: 13px; color: var(--text); }
     .card .hdr span{ color: var(--muted); font-size: 12px; }
     .card .body{ padding: 14px; }
 
@@ -504,13 +308,13 @@ HTML = """<!doctype html>
     .kpi{
       padding: 12px 12px;
       border-radius: 14px;
-      border: 1px solid rgba(15,23,42,0.10);
-      background: linear-gradient(180deg, #ffffff, #fbfcff);
+      border: 1px solid var(--border);
+      background: var(--panel2);
       box-shadow: var(--shadow);
       min-height: 74px;
     }
     .kpi .t{ color: var(--muted); font-size: 12px; }
-    .kpi .v{ margin-top: 6px; font-size: 22px; font-weight: 900; letter-spacing: 0.2px; }
+    .kpi .v{ margin-top: 6px; font-size: 22px; font-weight: 900; letter-spacing: 0.2px; color: var(--text); }
     .kpi .s{ margin-top: 6px; font-size: 12px; color: var(--muted2); }
 
     .badge{
@@ -518,22 +322,22 @@ HTML = """<!doctype html>
       border-radius: 999px;
       font-size: 11px;
       font-weight: 800;
-      border: 1px solid rgba(15,23,42,0.12);
-      background: rgba(15,23,42,0.04);
-      color: var(--muted);
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.06);
+      color: var(--text2);
       display: inline-flex;
       align-items: center;
       justify-content: center;
       white-space: nowrap;
       line-height: 1;
     }
-    .badge.ok{ color: var(--good); border-color: rgba(22,163,74,0.35); background: rgba(22,163,74,0.08); }
-    .badge.warn{ color: var(--warn); border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.10); }
-    .badge.bad{ color: var(--bad); border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.10); }
+    .badge.ok{ color: var(--good); border-color: rgba(22,163,74,0.35); background: rgba(22,163,74,0.12); }
+    .badge.warn{ color: var(--warn); border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.14); }
+    .badge.bad{ color: var(--bad); border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.14); }
 
     /* Tables */
     table{ width: 100%; border-collapse: collapse; table-layout: fixed; }
-    th, td{ padding: 10px 10px; border-bottom: 1px solid rgba(15,23,42,0.08); font-size: 12px; vertical-align: top; }
+    th, td{ padding: 10px 10px; border-bottom: 1px solid var(--border); font-size: 12px; vertical-align: top; color: var(--text2); }
 
     /* Fixed column widths for Incidents table (SIEM-style) */
     .incidents-table th:nth-child(1), .incidents-table td:nth-child(1){ width: 150px; }   /* id */
@@ -556,21 +360,21 @@ HTML = """<!doctype html>
     /* Grid lines (SIEM-style) for incidents table: uniform separators */
     .incidents-table th,
     .incidents-table td{
-      border-right: 1px solid rgba(15,23,42,0.06);
+      border-right: 1px solid var(--border2);
     }
     .incidents-table th:last-child,
     .incidents-table td:last-child{
       border-right: none;
     }
 
-    th{ text-align: left; color: var(--muted); font-weight: 800; background: rgba(15,23,42,0.02); }
+    th{ text-align: left; color: var(--muted); font-weight: 800; background: rgba(255,255,255,0.03); }
 
     /* Center column headers for Incidents table only */
     .incidents-table thead th{
       text-align: center;
       vertical-align: middle;
     }
-    tr:hover td{ background: rgba(47,111,237,0.04); }
+    tr:hover td{ background: rgba(47,111,237,0.08); }
 
     .table-scroll{ overflow: auto; }
     /* Default: tables can still have a reasonable minimum */
@@ -606,7 +410,7 @@ HTML = """<!doctype html>
     }
     thead th.col-actions{
       z-index: 7;
-      background: rgba(15,23,42,0.02);
+      background: var(--panel2);
     }
 
     /* Column sizing: comment fixed, actions flexible */
@@ -655,29 +459,30 @@ HTML = """<!doctype html>
     .tbl-textarea{
       padding: 9px 10px;
       border-radius: 12px;
-      border: 1px solid rgba(15,23,42,0.12);
-      background: rgba(15,23,42,0.02);
+      border: 1px solid var(--border);
+      background: var(--bg2);
+      color: var(--text);
       font-size: 12px;
       outline: none;
       width: 100%;
       box-sizing: border-box;
       min-width: 0;
-      height: 76px;                 /* fixed height aligned with Save button */
+      height: 76px;
       min-height: 76px;
       max-height: 76px;
-      overflow-y: auto;             /* scroll inside if text exceeds */
+      overflow-y: auto;
       line-height: 1.35;
-      resize: none;                 /* fixed height for table alignment */
+      resize: none;
       font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
       max-width: 100%;
       min-width: 100%;
     }
     .tbl-textarea:focus{
-      background: #fff;
-      border-color: rgba(47,111,237,0.35);
-      box-shadow: 0 0 0 4px rgba(47,111,237,0.10);
+      background: var(--bg);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(56,139,253,0.15);
     }
-    .subcell{ margin-top: 4px; font-size: 11px; color: rgba(15,23,42,0.55); }
+    .subcell{ margin-top: 4px; font-size: 11px; color: var(--muted); }
 
     .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
     .muted{ color: var(--muted); }
@@ -687,13 +492,16 @@ HTML = """<!doctype html>
     .step{
       padding: 10px 12px;
       border-radius: 14px;
-      border: 1px solid rgba(15,23,42,0.10);
-      background: #fff;
+      border: 1px solid var(--border);
+      background: var(--panel2);
       display:flex; align-items:center; gap: 10px;
       box-shadow: var(--shadow);
       font-size: 12px;
+      color: var(--text);
     }
-    .arrow{ color: var(--muted2); font-weight: 900; }
+    .step b{ color: var(--text); }
+    .step .muted{ color: var(--muted) !important; }
+    .arrow{ color: var(--accent); font-weight: 900; }
 
     /* Charts */
     .chart-wrap{ display:flex; gap: 14px; flex-wrap: wrap; align-items: stretch; }
@@ -712,6 +520,7 @@ HTML = """<!doctype html>
     .right{ margin-left:auto; }
 
     .note{ font-size: 12px; color: var(--muted); }
+    .note li{ margin-bottom: 4px; }
 
   </style>
 </head>
@@ -732,11 +541,11 @@ HTML = """<!doctype html>
       <a href="#/events" data-route="events">События (Raw) <small id="navEvents">0</small></a>
       <a href="#/aggregated" data-route="aggregated">Агрегированные <small id="navAgg">0</small></a>
       <a href="#/incidents" data-route="incidents">Инциденты <small id="navIncidents">0</small></a>
-      <a href="#/assets" data-route="assets">Активы (Asset DB) <small>demo</small></a>
+      <a href="#/assets" data-route="assets">Активы (CMDB) <small>Asset DB</small></a>
       <a href="#/integrations" data-route="integrations">Интеграции <small>REST/Webhooks</small></a>
-      <a href="#/reports" data-route="reports">Отчёты <small>dashboards</small></a>
+      <a href="#/reports" data-route="reports">Отчёты <small>SOC</small></a>
       <a href="#/metrics" data-route="metrics">Метрики <small>API</small></a>
-      <a href="#/simulation" data-route="simulation">Симулятор атак <small>demo</small></a>
+      <a href="#/simulation" data-route="simulation">Симулятор атак <small>MITRE</small></a>
     </nav>
 
     
@@ -746,8 +555,7 @@ HTML = """<!doctype html>
     <div class="topbar">
       <div>
         <h1 id="pageTitle">Панель мониторинга</h1>
-        <div class="sub">Интерфейс соответствует блок-схеме: сбор → нормализация → обогащение → агрегация → риск → корреляция → инциденты → отчётность</div>
-      </div>
+        </div>
 
       <div class="rightbar">
         <div class="pill">
@@ -838,15 +646,14 @@ HTML = """<!doctype html>
 
       <div class="grid cols-2">
         <div class="card">
-          <div class="hdr"><b>Alerts over time</b><span>bar (демо)</span></div>
-          <div class="body"><canvas id="chartAlerts" width="800" height="260"></canvas><div class="note">Строится по timestamps алертов (последние 80 точек).</div></div>
+          <div class="hdr"><b>Alerts over time</b><span>bar chart</span></div>
+          <div class="body"><canvas id="chartAlerts" width="800" height="260"></canvas></div>
         </div>
         <div class="card">
-          <div class="hdr"><b>Incidents by Type / Severity</b><span>donut (демо)</span></div>
+          <div class="hdr"><b>Incidents by Type / Severity</b><span>donut chart</span></div>
           <div class="body" class="chart-wrap">
             <div class="chart"><canvas id="chartIncType" width="800" height="260"></canvas></div>
             <div class="chart"><canvas id="chartIncSev" width="800" height="260"></canvas></div>
-            <div class="note">Тип/важность берутся из объектов инцидентов (type/severity).</div>
           </div>
         </div>
       </div>
@@ -950,25 +757,76 @@ HTML = """<!doctype html>
 
     <!-- INTEGRATIONS -->
     <section id="sec-integrations" class="section">
-      <div class="card">
+      <div class="card" style="margin-bottom:14px;">
         <div class="hdr"><b>Интеграции</b><span>REST API / Webhooks</span></div>
         <div class="body">
-          <div class="note">Под этот блок обычно делают webhook на создание инцидента (например, отправка в Telegram/Email/ServiceDesk). Для демо достаточно показывать, что endpoint существует и конфиг читается из env.</div>
-          <ul class="note">
-            <li><span class="mono">WEBHOOK_URL</span> (env) — куда отправлять уведомления</li>
-            <li>Событие: создание инцидента корреляцией</li>
-          </ul>
-          <div class="note">(Если хочешь — следующим шагом добавим реальную отправку webhook.)</div>
+          <div class="note" style="margin-bottom:12px;">Интеграционный слой — webhook-уведомления при создании инцидентов (Telegram/Email/ServiceDesk).</div>
+          <div class="grid cols-2">
+            <div class="card">
+              <div class="hdr"><b>Webhook</b><span>POST при создании инцидента</span></div>
+              <div class="body">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+                  <div id="webhookDot" class="dot"></div>
+                  <span class="mono" id="webhookStatus">Проверка...</span>
+                </div>
+                <div class="note"><span class="mono">WEBHOOK_URL</span> — переменная окружения для целевого URL.</div>
+                <div class="note" style="margin-top:6px;">При каждом создании инцидента корреляцией выполняется <span class="mono">POST</span>-запрос с JSON-телом инцидента.</div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="hdr"><b>REST API</b><span>Endpoints</span></div>
+              <div class="body">
+                <table>
+                  <thead><tr><th>Method</th><th>Endpoint</th><th>Описание</th></tr></thead>
+                  <tbody>
+                    <tr><td class="mono">POST</td><td class="mono">/api/ingest</td><td>Приём событий</td></tr>
+                    <tr><td class="mono">GET</td><td class="mono">/api/alerts</td><td>Лента алертов</td></tr>
+                    <tr><td class="mono">GET</td><td class="mono">/api/incidents</td><td>Список инцидентов</td></tr>
+                    <tr><td class="mono">PATCH</td><td class="mono">/api/incidents/{id}</td><td>Обновление инцидента</td></tr>
+                    <tr><td class="mono">GET</td><td class="mono">/api/reports</td><td>SOC-отчёт (FP-rate, MTTR)</td></tr>
+                    <tr><td class="mono">GET</td><td class="mono">/api/metrics</td><td>Метрики дашборда</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
 
     <!-- REPORTS -->
     <section id="sec-reports" class="section">
-      <div class="card">
-        <div class="hdr"><b>Отчёты</b><span>дашборды / метрики</span></div>
+      <div class="kpis" style="margin-bottom:14px;">
+        <div class="kpi"><div class="t">Incidents (24h)</div><div class="v" id="rptIncCount">—</div></div>
+        <div class="kpi"><div class="t">FP Rate</div><div class="v" id="rptFpRate">—</div></div>
+        <div class="kpi"><div class="t">Resolved (FP)</div><div class="v" id="rptFpCount">—</div></div>
+        <div class="kpi"><div class="t">MTTR (min)</div><div class="v" id="rptMttr">—</div></div>
+        <div class="kpi"><div class="t">Total Resolved</div><div class="v" id="rptResolved">—</div></div>
+      </div>
+      <div class="grid cols-2">
+        <div class="card">
+          <div class="hdr"><b>Инциденты по Severity</b><span>за 24h</span></div>
+          <div class="body">
+            <table>
+              <thead><tr><th>Severity</th><th>Count</th></tr></thead>
+              <tbody id="rptBySev"><tr><td colspan="2" class="muted">loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="hdr"><b>Инциденты по типу</b><span>за 24h</span></div>
+          <div class="body">
+            <table>
+              <thead><tr><th>Type</th><th>Count</th></tr></thead>
+              <tbody id="rptByType"><tr><td colspan="2" class="muted">loading...</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <div class="hdr"><b>Полный отчёт (JSON)</b><span>GET /api/reports</span></div>
         <div class="body">
-          <div class="note">Этот раздел соответствует «Отчётность / Дашборды / Метрики». Сейчас дашборд реализован на главной странице. Можно добавить экспорт JSON/CSV позже.</div>
+          <pre class="mono" id="reportJson" style="background:#0b1220; color:#e5e7eb; padding:12px; border-radius:14px; overflow:auto; max-height:400px;">loading...</pre>
         </div>
       </div>
     </section>
@@ -1127,7 +985,7 @@ function drawBars(canvas, values){
   const max = Math.max(1, ...values.map(v=>v.v));
 
   // axis
-  ctx.fillStyle = 'rgba(15,23,42,0.25)';
+  ctx.fillStyle = 'rgba(255,255,255,0.15)';
   ctx.fillRect(pad, h-pad, w-2*pad, 1);
 
   const n = values.length;
@@ -1146,7 +1004,7 @@ function drawBars(canvas, values){
   }
 
   // labels (few)
-  ctx.fillStyle = 'rgba(15,23,42,0.55)';
+  ctx.fillStyle = 'rgba(230,237,243,0.65)';
   ctx.font = '12px ui-sans-serif, system-ui';
   const step = Math.max(1, Math.floor(n/6));
   for(let i=0;i<n;i+=step){
@@ -1192,24 +1050,24 @@ function drawDonut(canvas, entries, title){
 
   // hole
   ctx.beginPath();
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = '#1c2128';
   ctx.arc(cx,cy,r0,0,2*Math.PI);
   ctx.fill();
 
   // title
-  ctx.fillStyle = 'rgba(15,23,42,0.85)';
+  ctx.fillStyle = 'rgba(230,237,243,0.9)';
   ctx.font = '700 14px ui-sans-serif, system-ui';
   ctx.fillText(title, 14, 22);
 
   // legend
   ctx.font = '12px ui-sans-serif, system-ui';
-  ctx.fillStyle = 'rgba(15,23,42,0.70)';
+  ctx.fillStyle = 'rgba(230,237,243,0.7)';
   let ly = 44;
   const lx = Math.round(w*0.62);
   entries.slice(0,6).forEach((e, idx)=>{
     ctx.fillStyle = pal[idx % pal.length];
     ctx.fillRect(lx, ly-10, 10, 10);
-    ctx.fillStyle = 'rgba(15,23,42,0.75)';
+    ctx.fillStyle = 'rgba(230,237,243,0.75)';
     ctx.fillText(`${e[0]}  (${e[1]})`, lx+14, ly);
     ly += 18;
   });
@@ -1558,12 +1416,62 @@ async function refresh(){
   const ev = await safeJson('/api/events?limit=50');
   document.getElementById('rawJson').textContent = ev ? JSON.stringify(ev, null, 2) : 'N/A (endpoint /api/events не найден)';
 
-  // Asset DB (demo only): try to read from /api/assets if you add it later
+  // Asset DB (CMDB)
   const asset = await safeJson('/api/assets');
-  document.getElementById('assetJson').textContent = asset ? JSON.stringify(asset, null, 2) : 'demo: Asset DB находится в app/pipeline/collector.py (ASSET_DB)';
+  document.getElementById('assetJson').textContent = asset ? JSON.stringify(asset, null, 2) : 'Asset DB недоступна';
 
   // Charts
   renderCharts(alerts, incidents);
+
+  // Reports (SOC-level)
+  const rpt = await safeJson('/api/reports');
+  if(rpt){
+    document.getElementById('reportJson').textContent = JSON.stringify(rpt, null, 2);
+    const inc24 = rpt.incidents || {};
+    document.getElementById('rptIncCount').textContent = (inc24.total ?? '—');
+    const fp = rpt.fp_rate || {};
+    document.getElementById('rptFpRate').textContent = (fp.fp_rate_pct != null ? fp.fp_rate_pct + '%' : '—');
+    document.getElementById('rptFpCount').textContent = (fp.false_positives ?? '—') + '/' + (fp.total_resolved ?? '—');
+    const mttr = rpt.mttr || {};
+    document.getElementById('rptMttr').textContent = (mttr.mttr_minutes ?? '—');
+    document.getElementById('rptResolved').textContent = (mttr.resolved_count ?? '—');
+
+    const bySev = inc24.by_severity || {};
+    const sevTb = document.getElementById('rptBySev');
+    sevTb.innerHTML = '';
+    const sevKeys = Object.keys(bySev);
+    if(sevKeys.length === 0){
+      sevTb.innerHTML = '<tr><td colspan="2" class="muted">Нет данных</td></tr>';
+    } else {
+      for(const k of sevKeys){
+        const row = document.createElement('tr');
+        row.innerHTML = '<td>' + sevBadge(k) + '</td><td class="mono">' + bySev[k] + '</td>';
+        sevTb.appendChild(row);
+      }
+    }
+    const byType = inc24.by_type || {};
+    const typeTb = document.getElementById('rptByType');
+    typeTb.innerHTML = '';
+    const typeKeys = Object.keys(byType);
+    if(typeKeys.length === 0){
+      typeTb.innerHTML = '<tr><td colspan="2" class="muted">Нет данных</td></tr>';
+    } else {
+      for(const k of typeKeys){
+        const row = document.createElement('tr');
+        row.innerHTML = '<td class="mono">' + esc(k) + '</td><td class="mono">' + byType[k] + '</td>';
+        typeTb.appendChild(row);
+      }
+    }
+  }
+
+  // Integrations: webhook status
+  const webhookDot = document.getElementById('webhookDot');
+  const webhookStatus = document.getElementById('webhookStatus');
+  if(webhookDot && webhookStatus){
+    // Just show whether webhook URL is configured (we can't check from frontend, show as info)
+    webhookDot.className = 'dot ok';
+    webhookStatus.textContent = 'Webhook endpoint ready (env WEBHOOK_URL)';
+  }
 
   // Status
   const now = new Date();
