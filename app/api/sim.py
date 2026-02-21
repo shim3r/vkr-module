@@ -11,6 +11,7 @@ from app.simulator.generator import run_generator, stop, RUNNING
 from app.services.alerts_store import clear_alerts
 from app.services.incidents_store import clear_incidents
 from app.services.events_store import clear_events
+from app.services.aggregates_store import reset_aggregates
 
 router = APIRouter(tags=["sim"])
 
@@ -116,4 +117,5 @@ async def reset_demo_state():
     clear_events()
     clear_alerts()
     clear_incidents()
+    reset_aggregates(purge_file=True)
     return {"status": "ok"}
