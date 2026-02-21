@@ -30,6 +30,8 @@
 
 ```bash
 cd ~/Desktop/vkr-module
+pip install -r requirements.txt
+python3 -m venv .venv
 source .venv/bin/activate   # или: .venv/bin/activate на Windows в Git Bash
 python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
