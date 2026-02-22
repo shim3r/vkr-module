@@ -14,6 +14,49 @@ IOCS_PATHS: List[Path] = [
     Path("data/cmdb/ti_iocs.json")
 ]
 
+# ---------------------------------------------------------------------------
+# Mock GeoIP table — maps IP address prefixes to country/city.
+# In production replace with MaxMind GeoLite2 or similar database.
+# Format: {"prefix": ("country_code", "country", "city")}
+# ---------------------------------------------------------------------------
+_MOCK_GEOIP: dict = {
+    # RFC-1918 private ranges → internal
+    "10.": ("RU", "Internal", "LAN"),
+    "192.168.": ("RU", "Internal", "LAN"),
+    "172.16.": ("RU", "Internal", "LAN"),
+    "127.": ("RU", "Internal", "Localhost"),
+    # Common external ranges (illustrative — NOT real GeoIP)
+    "1.2.3.": ("CN", "China", "Beijing"),
+    "5.188.": ("RU", "Russia", "Moscow"),
+    "45.83.": ("NL", "Netherlands", "Amsterdam"),
+    "46.166.": ("RU", "Russia", "Saint Petersburg"),
+    "77.88.": ("RU", "Russia", "Moscow"),
+    "80.90.": ("UA", "Ukraine", "Kyiv"),
+    "91.108.": ("RU", "Russia", "Moscow"),
+    "185.220.": ("DE", "Germany", "Frankfurt"),
+    "194.165.": ("NL", "Netherlands", "Amsterdam"),
+    "8.8.": ("US", "United States", "Mountain View"),
+    "1.1.": ("AU", "Australia", "Sydney"),
+}
+
+
+def _geoip_lookup(ip: str) -> Optional[dict]:
+    """Return GeoIP dict for an IP address using prefix matching."""
+    ip = (ip or "").strip()
+    if not ip:
+        return None
+    for prefix, (code, country, city) in _MOCK_GEOIP.items():
+        if ip.startswith(prefix):
+            return {"country_code": code, "country": country, "city": city}
+    # Unknown external IP
+    try:
+        import ipaddress as _ia
+        if not _ia.ip_address(ip).is_private:
+            return {"country_code": "XX", "country": "Unknown", "city": "Unknown"}
+    except Exception:
+        pass
+    return None
+
 
 def _read_json(path: Path) -> Any:
     if not path.exists():
@@ -163,10 +206,15 @@ def enrich_dict(normalized: Dict[str, Any]) -> Dict[str, Any]:
     tags: List[str] = list(normalized.get("tags") or [])
     ioc_hits: List[Dict[str, Any]] = list(normalized.get("ioc_hits") or [])
 
-    # --- Geo (MVP: internal/external)
+    # --- Geo (GeoIP: country/city from mock table, fallback internal/external)
     if src_ip:
-        normalized["src_geo"] = _geo_tag(src_ip)
-        if normalized.get("src_geo") == "external":
+        geo = _geoip_lookup(src_ip)
+        if geo:
+            normalized["src_geo"] = geo["country_code"].lower() if geo["country_code"] not in ("XX",) else "external"
+            normalized["geoip"] = geo
+        else:
+            normalized["src_geo"] = _geo_tag(src_ip)
+        if _geo_tag(src_ip) == "external":
             tags.append("geo:external_src")
     if dst_ip:
         normalized["dst_geo"] = _geo_tag(dst_ip)
@@ -180,6 +228,9 @@ def enrich_dict(normalized: Dict[str, Any]) -> Dict[str, Any]:
     if ioc_hits:
         normalized["ioc_hits"] = ioc_hits
         tags.append("enrich:ioc_hit")
+
+    # ti_match: True if ANY IOC hit found (TO-BE required field)
+    normalized["ti_match"] = bool(ioc_hits)
 
     # --- Asset (CMDB) lookup: host -> dst_ip -> src_ip
     asset = _DB.find(host=host)
@@ -199,13 +250,20 @@ def enrich_dict(normalized: Dict[str, Any]) -> Dict[str, Any]:
         normalized["asset_criticality"] = crit_val or None
         normalized["asset_owner"] = asset.get("owner")
         normalized["asset_zone"] = asset.get("zone")
+        # TO-BE: explicit network_zone field (was only in asset_zone before)
+        normalized["network_zone"] = asset.get("zone") or asset.get("network_zone") or "unknown"
         normalized["asset_tags"] = asset.get("tags") or []
         tags.append("enrich:asset")
 
         # Also provide richer nested asset objects for scoring/UI going forward
-        # (dst_asset is the most important in most SOC use-cases)
         normalized.setdefault("dst_asset", asset if dst_ip else None)
         normalized.setdefault("host_asset", asset if host else None)
+    else:
+        # No CMDB hit — derive network_zone from GeoIP
+        if src_ip:
+            normalized.setdefault("network_zone", "internal" if _is_private_ip(src_ip) else "external")
+        else:
+            normalized.setdefault("network_zone", "unknown")
 
     # Finalize tags
     if tags:

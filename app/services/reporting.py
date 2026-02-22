@@ -154,11 +154,86 @@ def mean_time_to_resolve() -> Dict[str, Any]:
     }
 
 
-def full_report(period_hours: int = 24) -> Dict[str, Any]:
-    """Generate a complete SOC-level report."""
+def mean_time_to_acknowledge() -> Dict[str, Any]:
+    """Calculate Mean Time To Acknowledge (MTTA).
+
+    MTTA = time from incident created_at to first status transition to 'In Progress'.
+    Computed from incident timeline entries.
+    """
+    all_inc = list_incidents(limit=10_000)
+
+    acknowledged = [
+        inc for inc in all_inc
+        if str(inc.get("status", "")) in ("In Progress", "Resolved", "Closed")
+    ]
+
+    if not acknowledged:
+        return {
+            "acknowledged_count": 0,
+            "mtta_minutes": 0.0,
+            "mtta_hours": 0.0,
+            "note": "No acknowledged incidents yet",
+        }
+
+    durations: list[float] = []
+    for inc in acknowledged:
+        created = _parse_dt(inc.get("created_at"))
+        if not created:
+            continue
+        # Find first 'In Progress' entry in timeline
+        timeline = inc.get("timeline") or []
+        ack_time = None
+        for entry in sorted(timeline, key=lambda e: e.get("timestamp", "")):
+            detail = str(entry.get("detail", "")).lower()
+            if "in progress" in detail and entry.get("action") == "status_change":
+                ack_time = _parse_dt(entry.get("timestamp"))
+                break
+        # Fallback: use updated_at as proxy
+        if not ack_time:
+            ack_time = _parse_dt(inc.get("updated_at"))
+        if ack_time and ack_time > created:
+            durations.append((ack_time - created).total_seconds())
+
+    if not durations:
+        return {
+            "acknowledged_count": len(acknowledged),
+            "mtta_minutes": 0.0,
+            "mtta_hours": 0.0,
+            "note": "Could not compute MTTA durations",
+        }
+
+    avg_seconds = sum(durations) / len(durations)
     return {
+        "acknowledged_count": len(acknowledged),
+        "mtta_seconds": round(avg_seconds, 1),
+        "mtta_minutes": round(avg_seconds / 60, 2),
+        "mtta_hours": round(avg_seconds / 3600, 2),
+    }
+
+
+def full_report(period_hours: int = 24) -> Dict[str, Any]:
+    """Generate a complete SOC-level report (TO-BE required metrics)."""
+    from app.services.events_store import count_events
+
+    total_events = 0
+    try:
+        total_events = count_events()
+    except Exception:
+        pass
+
+    aggregated_events = 0
+    try:
+        from app.services.aggregates_store import count_aggregates
+        aggregated_events = count_aggregates()
+    except Exception:
+        pass
+
+    return {
+        "total_events": total_events,
+        "aggregated_events": aggregated_events,
         "incidents": incidents_count(period_hours=period_hours),
         "fp_rate": fp_rate(),
         "mttr": mean_time_to_resolve(),
+        "mtta": mean_time_to_acknowledge(),
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }

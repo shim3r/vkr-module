@@ -17,11 +17,12 @@ except Exception:
 # In-memory store for incidents (demo mode)
 _INCIDENTS: Deque[Dict] = deque(maxlen=200)
 
-# Valid status transitions (TO-BE requirement)
+# Valid status transitions (TO-BE: New → In Progress → Resolved → Closed)
 VALID_TRANSITIONS = {
-    "New": {"In Progress", "Resolved"},
-    "In Progress": {"Resolved"},
-    "Resolved": set(),  # terminal state
+    "New": {"In Progress", "Resolved", "Closed"},
+    "In Progress": {"Resolved", "Closed"},
+    "Resolved": {"Closed"},
+    "Closed": set(),  # terminal state
 }
 
 
@@ -78,21 +79,12 @@ def _sla_by_severity(sev: str) -> int:
 
 
 def _send_webhook(incident: Dict) -> None:
-    """Отправка уведомления в интеграционный слой (REST/Webhook) при создании инцидента."""
-    if not WEBHOOK_URL:
-        return
-    payload = dict(incident)
-
-    def _post() -> None:
-        try:
-            import httpx
-            with httpx.Client(timeout=10.0) as client:
-                client.post(WEBHOOK_URL, json=payload)
-        except Exception:
-            pass
-
-    t = threading.Thread(target=_post, daemon=True)
-    t.start()
+    """Delegate webhook notification to the integrations layer."""
+    try:
+        from app.integrations import send_webhook as _send
+        _send(incident)
+    except Exception:
+        pass
 
 
 def _compute_total_risk(related_events: List[Dict]) -> float:
@@ -150,9 +142,18 @@ def add_incident(inc: Dict) -> Dict:
     stored.setdefault("assignee", "")
     stored.setdefault("comment", "")
 
-    # TO-BE: related_events (full event objects, not just IDs)
-    if "related_events" not in stored:
-        stored["related_events"] = []
+    # TO-BE: related_events — hydrate full event objects from events store
+    if "related_events" not in stored or not stored["related_events"]:
+        evidence_ids = set(stored.get("evidence_event_ids") or [])
+        if evidence_ids:
+            try:
+                from app.services.events_store import all_events
+                related = [e for e in all_events() if e.get("event_id") in evidence_ids]
+                stored["related_events"] = related
+            except Exception:
+                stored["related_events"] = []
+        else:
+            stored["related_events"] = []
 
     # TO-BE: total_risk_score (computed from related events or incident risk)
     if "total_risk_score" not in stored:
@@ -160,7 +161,6 @@ def add_incident(inc: Dict) -> Dict:
         if related:
             stored["total_risk_score"] = _compute_total_risk(related)
         else:
-            # Use incident-level risk as fallback
             try:
                 stored["total_risk_score"] = float(stored.get("risk", 0))
             except (TypeError, ValueError):

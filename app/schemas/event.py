@@ -70,3 +70,8 @@ class NormalizedEvent(BaseModel):
     src_geo: Optional[str] = None
     dst_geo: Optional[str] = None
     ioc_hits: Optional[List[Dict[str, Any]]] = None
+
+    # TO-BE required enrichment fields
+    network_zone: Optional[str] = None          # e.g. "dmz", "internal", "external", "ics"
+    geoip: Optional[Dict[str, str]] = None      # {"country_code": "RU", "country": "Russia", "city": "Moscow"}
+    ti_match: bool = False                       # True if IOC match found in TI database

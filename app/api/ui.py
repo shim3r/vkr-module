@@ -933,6 +933,71 @@ function statusBadge(val){
   return '<span class="badge">' + esc(val || '—') + '</span>';
 }
 
+const openDetails = new Set();
+
+function toggleDetails(incidentId){
+  const el = document.getElementById('details-' + incidentId);
+  if(el){
+    if (el.style.display === 'none') {
+      el.style.display = 'block';
+      openDetails.add(incidentId);
+    } else {
+      el.style.display = 'none';
+      openDetails.delete(incidentId);
+    }
+  }
+}
+
+function renderRelatedEvents(events){
+  if(!events || events.length === 0) return '<div class="muted">Связанные события (evidence) не найдены.</div>';
+  
+  // Sort chronically
+  const sorted = [...events].sort((a,b) => {
+    const ta = new Date(a.received_at || 0).getTime();
+    const tb = new Date(b.received_at || 0).getTime();
+    return ta - tb;
+  });
+
+  let html = '<div style="margin-bottom:6px;font-weight:600;color:#93c5fd;">Таймлайн инцидента (Evidence Events):</div>';
+  html += '<div style="display:flex; flex-direction:column; gap:4px; max-height:200px; overflow-y:auto; padding-right:8px;">';
+  
+  for(let i=0; i<sorted.length; i++){
+    const e = sorted[i];
+    const ts = fmtTime(e.received_at || e.timestamp_utc);
+    const type = esc(e.event_type || 'UNKNOWN');
+    const src = esc(e.source_type) || '—';
+    const sip = esc(e.src_ip || '');
+    const dip = esc(e.dst_ip || e.host || '');
+    const usr = esc(e.user || '');
+    
+    // Draw connection line
+    const isLast = (i === sorted.length - 1);
+    
+    html += `
+      <div style="display:flex; align-items:stretch; gap:10px;">
+        <div style="display:flex; flex-direction:column; align-items:center; width:12px;">
+          <div style="width:8px; height:8px; border-radius:50%; background:#3b82f6; margin-top:5px;"></div>
+          ${!isLast ? '<div style="flex:1; width:2px; background:rgba(59,130,246,0.3); margin-top:2px;"></div>' : ''}
+        </div>
+        <div style="flex:1; background:rgba(255,255,255,0.05); padding:6px 10px; border-radius:4px; margin-bottom:4px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
+            <span style="color:#bfdbfe; font-weight:600;">${type}</span>
+            <span style="color:#9ca3af; font-size:10.5px;">${ts}</span>
+          </div>
+          <div style="color:#e5e7eb; display:flex; gap:10px; flex-wrap:wrap;">
+             <span><span class="muted">src:</span> ${sip || '—'}</span>
+             <span><span class="muted">target:</span> ${dip || '—'}</span>
+             <span><span class="muted">user:</span> ${usr || '—'}</span>
+             <span><span class="muted">sensor:</span> ${src}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  html += '</div>';
+  return html;
+}
+
 async function patchIncident(incidentId, payload){
   try{
     const r = await fetch('/api/incidents/' + encodeURIComponent(incidentId), {
@@ -981,35 +1046,93 @@ function drawBars(canvas, values){
   const w = canvas.width, h = canvas.height;
   ctx.clearRect(0,0,w,h);
 
-  const pad = 26;
+  const padBottom = 26;
+  const padLeft = 30;
+  const padTop = 15;
+  const padRight = 10;
+  const chartW = w - padLeft - padRight;
+  const chartH = h - padTop - padBottom;
+  
   const max = Math.max(1, ...values.map(v=>v.v));
-
-  // axis
-  ctx.fillStyle = 'rgba(255,255,255,0.15)';
-  ctx.fillRect(pad, h-pad, w-2*pad, 1);
-
   const n = values.length;
   if(n === 0) return;
-  const barW = (w - 2*pad) / n;
 
-  for(let i=0;i<n;i++){
-    const v = values[i].v;
-    const bh = Math.round((h-2*pad) * (v / max));
-    const x = pad + i*barW + 2;
-    const y = (h - pad) - bh;
+  // Draw horizontal grid lines
+  const gridLines = 4;
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for(let i=0; i<=gridLines; i++){
+    const y = padTop + (chartH / gridLines) * i;
+    ctx.moveTo(padLeft, y);
+    ctx.lineTo(padLeft + chartW, y);
+  }
+  ctx.stroke();
 
-    // bar
-    ctx.fillStyle = 'rgba(47,111,237,0.55)';
-    ctx.fillRect(x, y, Math.max(2, barW-4), bh);
+  // Draw Y axis labels
+  ctx.fillStyle = 'rgba(230,237,243,0.5)';
+  ctx.font = '10px ui-sans-serif, system-ui';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  for(let i=0; i<=gridLines; i++){
+    const val = Math.round(max - (max / gridLines) * i);
+    const y = padTop + (chartH / gridLines) * i;
+    ctx.fillText(val, padLeft - 6, y);
   }
 
-  // labels (few)
+  // Draw X axis line
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.fillRect(padLeft, h - padBottom, chartW, 1);
+
+  const barSpace = chartW / n;
+  const barW = Math.max(2, Math.min(barSpace * 0.7, 40));
+
+  // Create gradient for bars
+  const grad = ctx.createLinearGradient(0, padTop, 0, h - padBottom);
+  grad.addColorStop(0, 'rgba(56, 189, 248, 0.9)'); // bright blue top
+  grad.addColorStop(1, 'rgba(37, 99, 235, 0.1)');  // darker/transparent bottom
+
+  ctx.textAlign = 'center';
+  
+  for(let i=0; i<n; i++){
+    const v = values[i].v;
+    const bh = Math.max(1, chartH * (v / max));
+    const centerX = padLeft + i*barSpace + (barSpace/2);
+    const x = centerX - barW/2;
+    const y = (h - padBottom) - bh;
+
+    // Draw rounded bar
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    const r = Math.min(4, barW/2, bh);
+    ctx.moveTo(x, y + bh);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.lineTo(x + barW - r, y);
+    ctx.quadraticCurveTo(x + barW, y, x + barW, y + r);
+    ctx.lineTo(x + barW, y + bh);
+    ctx.fill();
+
+    // Draw value on top if bar is wide enough
+    if (barW > 12 && v > 0) {
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      ctx.font = '9px ui-sans-serif, system-ui';
+      ctx.fillText(v, centerX, y - 6);
+    }
+  }
+
+  // Draw X axis labels
   ctx.fillStyle = 'rgba(230,237,243,0.65)';
-  ctx.font = '12px ui-sans-serif, system-ui';
-  const step = Math.max(1, Math.floor(n/6));
-  for(let i=0;i<n;i+=step){
+  ctx.font = '11px ui-sans-serif, system-ui';
+  ctx.textBaseline = 'top';
+  
+  const maxLabels = Math.max(2, Math.floor(chartW / 60)); 
+  const step = Math.max(1, Math.floor(n / maxLabels));
+  
+  for(let i=0; i<n; i+=step){
     const label = values[i].k;
-    ctx.fillText(label, pad + i*barW + 2, h-8);
+    const centerX = padLeft + i*barSpace + (barSpace/2);
+    ctx.fillText(label, centerX, h - padBottom + 6);
   }
 }
 
@@ -1239,9 +1362,15 @@ function renderIncidentsTables(items){
       <td class="mono">${esc(type)}</td>
       <td class="mono">${fmtTime(fs)}</td>
       <td class="mono muted">${esc(asset)}</td>
-      <td>${esc(title)}</td>
+      <td>
+        <div style="font-weight:600;margin-bottom:10px;margin-left:6px;">${esc(title)}</div>
+        <button class="tbl-btn" style="width:100%; margin-top:8px;" onclick="toggleDetails('${esc(id)}')">Показать историю корреляции (Related Events)</button>
+        <div id="details-${esc(id)}" class="related-events-box" style="display:${openDetails.has(id) ? 'block' : 'none'}; margin-top:10px; padding:10px; background:rgba(0,0,0,0.2); border-left:3px solid #3b82f6; border-radius:4px; font-size:11.5px;">
+          ${renderRelatedEvents(it.related_events)}
+        </div>
+      </td>
       <td class="col-comment"><textarea class="tbl-textarea" rows="2" style="width:100%" data-incident-id="${esc(id)}" data-role="comment" placeholder="Комментарий (сохраняется кнопкой Save)">${esc(comment)}</textarea></td>
-      <td class="col-actions"><button class="tbl-btn" data-incident-id="${esc(id)}" data-action="save">Save</button></td>
+      <td class="col-actions"><button class="tbl-btn" style="height:100%; min-height:50px; padding:0 16px; font-size:14px;" data-incident-id="${esc(id)}" data-action="save">Save</button></td>
     `;
     full.appendChild(row);
   }

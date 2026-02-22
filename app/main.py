@@ -8,6 +8,8 @@ from app.api.alerts import router as alerts_router
 from app.api.incidents import router as incidents_router
 from app.api.sim import router as sim_router
 from app.api.ui import router as ui_router
+from app.api.reporting import router as reporting_router
+from app.api.integrations import router as integrations_router
 from app.pipeline.pipeline import get_pipeline
 
 
@@ -31,6 +33,8 @@ app.include_router(ingest_router, prefix="/api")
 app.include_router(alerts_router, prefix="/api")
 app.include_router(incidents_router, prefix="/api")
 app.include_router(sim_router, prefix="/api")
+app.include_router(reporting_router, prefix="/api")
+app.include_router(integrations_router, prefix="/api")
 
 
 @app.get("/health")

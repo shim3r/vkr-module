@@ -38,6 +38,24 @@ EVENT_TYPE_MAP = {
         "LOGIN_SUCCESS": ("authentication", 3),
         "ACCOUNT_LOCK": ("account", 8),
     },
+    # Windows Event Logs / ARM (Azure Resource Manager / Windows logs)
+    "arm": {
+        "4624": ("authentication", 3),   # Logon Success
+        "4625": ("authentication", 7),   # Logon Failure
+        "4648": ("authentication", 6),   # Logon with explicit credentials
+        "4672": ("privilege", 6),        # Special privileges assigned
+        "4688": ("process", 4),          # Process creation
+        "4698": ("persistence", 8),      # Scheduled task created
+        "4720": ("account", 7),          # User account created
+        "4726": ("account", 8),          # User account deleted
+        "4769": ("authentication", 5),   # Kerberos TGS request
+        "4776": ("authentication", 6),   # NTLM authentication attempt
+        "7045": ("persistence", 8),      # New service installed
+        "LOGON_SUCCESS": ("authentication", 3),
+        "LOGON_FAILURE": ("authentication", 7),
+        "PROCESS_CREATE": ("process", 4),
+        "SERVICE_INSTALL": ("persistence", 8),
+    },
 }
 
 # ----------------------------
@@ -186,6 +204,54 @@ def normalize_iam(data: Dict[str, Any]) -> Dict[str, Any]:
         "src_ip": data.get("ip"),
     }
 
+
+def normalize_arm(data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize Windows Event Logs (ARM/Azure Resource Manager).
+
+    Supports both:
+      - Structured JSON (from Windows Security event log collector)
+      - Key-value flat format: EventID, Computer, SubjectUserName, IpAddress, etc.
+    """
+    event_id = str(data.get("EventID") or data.get("event_id") or "")
+    event_type = data.get("event_type")
+    if not event_type:
+        # Map numeric Windows Event IDs to canonical type names
+        _win_type_map = {
+            "4624": "LOGON_SUCCESS",
+            "4625": "LOGON_FAILURE",
+            "4648": "LOGON_EXPLICIT_CREDS",
+            "4672": "SPECIAL_PRIVILEGES",
+            "4688": "PROCESS_CREATE",
+            "4698": "SCHEDULED_TASK_CREATED",
+            "4720": "ACCOUNT_CREATED",
+            "4726": "ACCOUNT_DELETED",
+            "4769": "KERBEROS_TGS",
+            "4776": "NTLM_AUTH",
+            "7045": "SERVICE_INSTALL",
+        }
+        event_type = _win_type_map.get(event_id, event_id or "UNKNOWN")
+
+    return {
+        "event_type": event_type,
+        "host": (
+            data.get("host") or data.get("Computer")
+            or data.get("WorkstationName") or data.get("hostname")
+        ),
+        "user": (
+            data.get("user") or data.get("SubjectUserName")
+            or data.get("TargetUserName") or data.get("username")
+        ),
+        "src_ip": (
+            data.get("src_ip") or data.get("IpAddress")
+            or data.get("ClientAddress")
+        ),
+        "dst_ip": data.get("dst_ip"),
+        "process": data.get("NewProcessName") or data.get("ProcessName"),
+        "windows_event_id": event_id,
+        "logon_type": data.get("LogonType"),
+    }
+
 # ----------------------------
 # Main dispatcher
 # ----------------------------
@@ -220,6 +286,8 @@ def normalize(payload: Dict[str, Any], raw_id: str, received_at_iso: str) -> Nor
         base = normalize_edr(fields)
     elif source == "iam":
         base = normalize_iam(fields)
+    elif source == "arm":
+        base = normalize_arm(fields)
     else:
         base = {}
 

@@ -1,5 +1,28 @@
 {
-  "bad_ips": ["203.0.113.66"],
-  "bad_users": ["administrator"],
-  "bad_hashes": []
+  "bad_ips": [
+    "1.2.3.4",
+    "5.188.206.17",
+    "45.83.91.156",
+    "185.220.101.42",
+    "91.108.56.130",
+    "194.165.16.90",
+    "80.90.22.15",
+    "46.166.148.100",
+    "198.51.100.7",
+    "203.0.113.42"
+  ],
+  "bad_users": [
+    "hacker",
+    "attacker",
+    "malicious_user",
+    "compromised_admin",
+    "threat_actor"
+  ],
+  "bad_hashes": [
+    "d41d8cd98f00b204e9800998ecf8427e",
+    "e10adc3949ba59abbe56e057f20f883e",
+    "aabbccddeeff00112233445566778899",
+    "deadbeefdeadbeefdeadbeefdeadbeef",
+    "cafebabecafebabecafebabecafebabe0"
+  ]
 }

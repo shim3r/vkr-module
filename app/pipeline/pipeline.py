@@ -1,11 +1,15 @@
 """
 Async Queue-based pipeline orchestrator (TO-BE architecture).
 
-Collector -> Queue -> Normalizer -> Queue -> Enricher -> Queue -> Scorer
-    -> Queue -> Aggregator -> Queue -> Correlator -> Queue -> IncidentManager
+TO-BE pipeline:
+  COLLECT → RAW STORE → NORMALIZE → ENRICH → SCORE
+          → AGGREGATE → CORRELATE → INCIDENT → INTEGRATION
 
 Each stage is an independent async worker consuming from an input queue
 and producing to an output queue.
+
+The _ingest_sync() method is the synchronous fallback path used when
+the pipeline workers are not yet started (e.g. during tests or CLI use).
 """
 
 from __future__ import annotations
@@ -28,13 +32,14 @@ from app.pipeline.scoring import score
 from app.pipeline.aggregate import update_aggregate
 from app.pipeline.correlate import run_correlation
 from app.services.alerts_store import add_alert
-from app.services.events_store import add_event
+from app.services.events_store import add_event, all_events
+from app.services.incidents_store import add_incident
 
 logger = logging.getLogger("siem.pipeline")
 
 
 class Pipeline:
-    """Async Queue-based SIEM pipeline."""
+    """Async Queue-based SIEM pipeline (TO-BE)."""
 
     def __init__(self, queue_size: int = PIPELINE_QUEUE_SIZE):
         self.q_raw = asyncio.Queue(maxsize=queue_size)
@@ -80,9 +85,6 @@ class Pipeline:
 
         Returns basic result dict with raw_id.
         """
-        RAW_DIR.mkdir(parents=True, exist_ok=True)
-        NORMALIZED_DIR.mkdir(parents=True, exist_ok=True)
-
         raw_id = str(uuid4())
         received_at = datetime.now(timezone.utc).isoformat()
 
@@ -92,7 +94,7 @@ class Pipeline:
             "payload": payload,
         }
 
-        # 1) Persist raw event (forensic archive)
+        # 1) Persist raw event (forensic archive — immutable, NEVER modified)
         out_path = RAW_DIR / f"{raw_id}.json"
         out_path.write_text(
             json.dumps(record, ensure_ascii=False, indent=2),
@@ -112,6 +114,114 @@ class Pipeline:
             "raw_id": raw_id,
             "stored_to": str(out_path),
             "status": "queued",
+        }
+
+    # ------------------------------------------------------------------
+    # Sync fallback (used when workers are not started, e.g. in tests)
+    # All business logic stays in the same pipeline stages — no shortcuts.
+    # ------------------------------------------------------------------
+
+    async def _ingest_sync(self, payload: dict) -> dict:
+        """
+        Synchronous fallback — runs the full pipeline chain inline.
+
+        This method exists so that collector.py NEVER imports pipeline
+        processing functions directly. All stages are called through
+        Pipeline methods, preserving the architectural boundary.
+        """
+        raw_id = str(uuid4())
+        received_at = datetime.now(timezone.utc).isoformat()
+
+        record = {
+            "raw_id": raw_id,
+            "received_at": received_at,
+            "payload": payload,
+        }
+
+        # Stage 1: RAW STORE
+        out_path = RAW_DIR / f"{raw_id}.json"
+        out_path.write_text(
+            json.dumps(record, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        # Stage 2: NORMALIZE
+        normalized = normalize(
+            payload=payload,
+            raw_id=raw_id,
+            received_at_iso=received_at,
+        )
+        normalized_dict = normalized.model_dump(mode="json")
+        normalized_dict["_raw_record"] = record
+
+        # Stage 3: ENRICH
+        enriched = enrich_dict(normalized_dict)
+
+        # Stage 4: SCORE
+        risk, priority, is_critical = score(enriched)
+        enriched["risk"] = risk
+        enriched["priority"] = priority
+        enriched["_is_critical"] = is_critical
+
+        # Stage 5: AGGREGATE
+        update_aggregate(enriched)
+        add_event(enriched)
+
+        # Persist normalized event
+        normalized_path = NORMALIZED_DIR / f"{raw_id}.json"
+        normalized_path.write_text(
+            json.dumps(enriched, ensure_ascii=False, indent=2, default=str),
+            encoding="utf-8",
+        )
+
+        # Stage 6: CORRELATE — generate alerts for critical events
+        is_critical_flag = enriched.pop("_is_critical", False)
+        raw_record = enriched.pop("_raw_record", {})
+        raw_payload = raw_record.get("payload", {})
+
+        if is_critical_flag:
+            add_alert({
+                "alert_id": f"AL-{uuid4().hex[:12].upper()}",
+                "raw_id": raw_id,
+                "priority": priority,
+                "risk": risk,
+                "source_type": enriched.get("source_type") or raw_payload.get("source_type"),
+                "format": enriched.get("format") or raw_payload.get("format"),
+                "received_at": received_at,
+                "event_type": enriched.get("event_type"),
+                "src_ip": enriched.get("src_ip"),
+                "dst_ip": enriched.get("dst_ip"),
+                "user": enriched.get("user"),
+                "snippet": str(raw_payload.get("data", ""))[:200],
+            })
+
+        # Stage 7: CORRELATE — run correlation rules, create incidents
+        incidents = run_correlation()
+        for inc in incidents:
+            # Hydrate related_events from events store
+            evidence_ids = set(inc.get("evidence_event_ids") or [])
+            if evidence_ids:
+                related = [e for e in all_events() if e.get("event_id") in evidence_ids]
+                inc["related_events"] = related
+            add_incident(inc)
+
+        logger.info(
+            "[SYNC] raw_id=%s type=%s src=%s risk=%.2f priority=%s incidents=%d",
+            raw_id,
+            enriched.get("event_type"),
+            enriched.get("src_ip"),
+            risk,
+            priority,
+            len(incidents),
+        )
+
+        return {
+            "raw_id": raw_id,
+            "stored_to": str(out_path),
+            "normalized_stored_to": str(normalized_path),
+            "risk": risk,
+            "priority": priority,
+            "correlation_incidents": incidents,
         }
 
     # ------------------------------------------------------------------
@@ -147,7 +257,7 @@ class Pipeline:
                 self.q_raw.task_done()
 
     async def _stage_enricher(self) -> None:
-        """Consume normalized events, enrich with CMDB/IOC, push to scorer."""
+        """Consume normalized events, enrich with CMDB/IOC/GeoIP, push to scorer."""
         while self._running:
             try:
                 normalized_dict = await asyncio.wait_for(self.q_normalized.get(), timeout=1.0)
@@ -190,7 +300,7 @@ class Pipeline:
                 self.q_enriched.task_done()
 
     async def _stage_aggregator(self) -> None:
-        """Consume scored events, update aggregates, push to correlator."""
+        """Consume scored events, update aggregates, persist, push to correlator."""
         while self._running:
             try:
                 scored = await asyncio.wait_for(self.q_scored.get(), timeout=1.0)
@@ -201,7 +311,7 @@ class Pipeline:
                 update_aggregate(scored)
                 add_event(scored)
 
-                # Persist normalized event to disk
+                # Persist normalized+scored event to disk
                 raw_id = scored.get("raw_event_id") or scored.get("event_id")
                 if raw_id:
                     normalized_path = NORMALIZED_DIR / f"{raw_id}.json"
@@ -218,7 +328,14 @@ class Pipeline:
                 self.q_scored.task_done()
 
     async def _stage_correlator(self) -> None:
-        """Consume aggregated events, generate alerts for critical ones, push to incident manager."""
+        """
+        Consume aggregated events.
+
+        1) Generate alert if critical.
+        2) Run correlation rules against event window.
+        3) Create incidents for matched rules.
+        4) Push event to incident_manager queue for notification/logging.
+        """
         while self._running:
             try:
                 event = await asyncio.wait_for(self.q_aggregated.get(), timeout=1.0)
@@ -230,7 +347,7 @@ class Pipeline:
                 raw_record = event.pop("_raw_record", {})
                 payload = raw_record.get("payload", {})
 
-                # Critical events -> alerts feed
+                # Generate alert for HIGH/CRITICAL events
                 if is_critical:
                     raw_id = event.get("raw_event_id") or event.get("event_id")
                     add_alert({
@@ -248,15 +365,38 @@ class Pipeline:
                         "snippet": str(payload.get("data", ""))[:200],
                     })
 
+                # Run correlation rules — may produce incidents
+                incidents = run_correlation()
+                for inc in incidents:
+                    # Hydrate related_events from events store using evidence IDs
+                    evidence_ids = set(inc.get("evidence_event_ids") or [])
+                    if evidence_ids:
+                        related = [e for e in all_events() if e.get("event_id") in evidence_ids]
+                        inc["related_events"] = related
+                    stored_inc = add_incident(inc)
+                    logger.info(
+                        "[CORRELATOR] Incident created: %s type=%s severity=%s",
+                        stored_inc.get("incident_id"),
+                        stored_inc.get("type"),
+                        stored_inc.get("severity"),
+                    )
+
+                # Tag event with incidents count and pass to notification stage
+                event["_incidents"] = incidents
                 await self.q_correlated.put(event)
-                logger.debug("[CORRELATOR] event queued for incident check")
+                logger.debug("[CORRELATOR] event_id=%s incidents=%d", event.get("event_id"), len(incidents))
             except Exception:
                 logger.exception("[CORRELATOR] Error")
             finally:
                 self.q_aggregated.task_done()
 
     async def _stage_incident_manager(self) -> None:
-        """Consume correlated events, run correlation rules, create incidents."""
+        """
+        Consume correlated events and dispatch notifications/logging.
+
+        Correlation and incident creation happen in _stage_correlator.
+        This stage handles: structured logging, metrics, future integrations.
+        """
         while self._running:
             try:
                 event = await asyncio.wait_for(self.q_correlated.get(), timeout=1.0)
@@ -264,24 +404,29 @@ class Pipeline:
                 continue
 
             try:
-                incidents = run_correlation()
-                if incidents:
-                    logger.info(
-                        "[INCIDENT_MANAGER] %d incidents created for event_id=%s",
-                        len(incidents),
-                        event.get("event_id"),
-                    )
-
+                incidents = event.pop("_incidents", [])
                 raw_id = event.get("raw_event_id") or event.get("event_id")
-                print(
-                    f"[PIPELINE] raw_id={raw_id} "
-                    f"type={event.get('event_type')} "
-                    f"src={event.get('src_ip')} "
-                    f"user={event.get('user')} "
-                    f"risk={event.get('risk')} priority={event.get('priority')}"
+
+                logger.info(
+                    "[INCIDENT_MANAGER] raw_id=%s type=%s src=%s user=%s "
+                    "risk=%s priority=%s incidents=%d",
+                    raw_id,
+                    event.get("event_type"),
+                    event.get("src_ip"),
+                    event.get("user"),
+                    event.get("risk"),
+                    event.get("priority"),
+                    len(incidents),
                 )
+
                 if incidents:
-                    print(f"[CORRELATION] incidents={incidents}")
+                    for inc in incidents:
+                        logger.info(
+                            "[INCIDENT_MANAGER] -> %s %s %s",
+                            inc.get("incident_id") or inc.get("type"),
+                            inc.get("severity"),
+                            inc.get("title"),
+                        )
             except Exception:
                 logger.exception("[INCIDENT_MANAGER] Error")
             finally:
