@@ -418,33 +418,26 @@ HTML = """<!doctype html>
     th.col-actions, td.col-actions{ min-width: 150px; }
 
     /* Small gap only: textarea should extend up to actions column */
-    td.col-comment{ padding-right: 14px; }
+    td.col-comment{ padding-right: 14px; vertical-align: top; padding-top: 12px; }
 
     /* Actions cell: SIEM-style alignment */
     td.col-actions{
       vertical-align: top;
-      padding: 12px 10px;        /* space above and below the button */
-      display: flex;
-      align-items: flex-start;   /* do not stretch the Save button to textarea height */
+      padding-top: 12px;
+      padding-bottom: 12px;
     }
 
     /* Save button: SIEM-style, visually part of row */
     td.col-actions .tbl-btn{
-      width: 100%;
-      height: 36px;              /* real fixed button height */
-      min-height: 36px;
-      max-height: 36px;
       margin: 0;                 /* spacing handled by td padding */
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 0 18px;           /* horizontal padding only */
       border-radius: 12px;
       background: linear-gradient(135deg, rgba(47,111,237,0.95), rgba(47,111,237,0.70));
       border: 1px solid rgba(47,111,237,0.55);
       color: #ffffff;
       font-weight: 800;
-      font-size: 20px;           /* normal readable size */
       letter-spacing: 0.4px;
       box-sizing: border-box;
       line-height: 1;            /* text fully centered vertically */
@@ -1369,8 +1362,8 @@ function renderIncidentsTables(items){
           ${renderRelatedEvents(it.related_events)}
         </div>
       </td>
-      <td class="col-comment"><textarea class="tbl-textarea" style="width:100%; height:96px; resize:vertical;" data-incident-id="${esc(id)}" data-role="comment" placeholder="Комментарий (сохраняется кнопкой Save)">${esc(comment)}</textarea></td>
-      <td class="col-actions"><button class="tbl-btn" style="height:96px; width:100%; padding:0 16px; font-size:14px;" data-incident-id="${esc(id)}" data-action="save">Save</button></td>
+      <td class="col-comment"><textarea class="tbl-textarea" style="display:block; box-sizing:border-box; width:100%; height:96px; resize:vertical; margin:0;" data-incident-id="${esc(id)}" data-role="comment" placeholder="Комментарий (сохраняется кнопкой Save)">${esc(comment)}</textarea></td>
+      <td class="col-actions"><button class="tbl-btn" style="display:block; box-sizing:border-box; height:96px; width:100%; margin:0; padding:0 16px; font-size:14px;" data-incident-id="${esc(id)}" data-action="save">Save</button></td>
     `;
     full.appendChild(row);
   }
