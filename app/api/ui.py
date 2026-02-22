@@ -125,6 +125,14 @@ HTML = """<!doctype html>
 
     /* Layout */
     .app{ height: 100%; display: grid; grid-template-columns: 270px 1fr; }
+
+    @media (max-width: 900px) {
+      .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; overflow: auto; }
+      body { overflow: auto; height: auto; }
+      .sidebar { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.06); height: auto; }
+      .main { height: auto; overflow: visible; }
+    }
+
     .sidebar{
       background: linear-gradient(180deg, var(--sidebar), var(--sidebar2));
       color: rgba(255,255,255,0.92);
@@ -133,6 +141,9 @@ HTML = """<!doctype html>
       display: flex;
       flex-direction: column;
       gap: 14px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255,255,255,0.1) transparent;
     }
     .brand{
       display:flex; align-items:center; gap: 12px;
