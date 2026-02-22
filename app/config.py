@@ -22,5 +22,9 @@ RAW_CLEANUP_EVERY = int(os.getenv("RAW_CLEANUP_EVERY", "50"))
 PIPELINE_QUEUE_SIZE = int(os.getenv("PIPELINE_QUEUE_SIZE", "1000"))
 PIPELINE_WORKERS = int(os.getenv("PIPELINE_WORKERS", "1"))
 
+# Security & CORS
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+
 # Интеграционный слой: webhook при создании инцидента (Telegram/Email/ServiceDesk)
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "").strip() or None
