@@ -1,7 +1,6 @@
-
 # VKR SIEM Module (Prototype)
-Прототип модуля автоматизации обработки событий информационной безопасности (ИСБ) для ВКР.  
-Проект демонстрирует упрощённый SIEM/SOAR-подход: **сбор событий → нормализация → риск-оценка → алерты → корреляция → инциденты → веб-панель мониторинга**.
+Прототип модуля автоматизации обработки событий информационной безопасности (ИБ) для ВКР.  
+Проект демонстрирует современный SIEM/SOAR-подход на базе асинхронной очереди (Async Queue-based pipeline): **сбор событий → нормализация → обогащение → агрегация → риск-оценка → алерты → корреляция → инциденты → интеграции/отчетность → веб-панель мониторинга**.
 
 ## Что уже реализовано
 
@@ -13,16 +12,17 @@
 - ARM/Endpoints (как источник для демо)
 
 ### Пайплайн (по блок-схеме)
-1. **Collectors / Ingest API**: приём событий через REST или загрузку файла.
-2. **Raw Events Store**: сохранение сырых событий в `data/raw/*.json`.
+Обработка событий происходит в виде конвейера, где каждая стадия является выделенным асинхронным воркером:
+1. **Collectors / Ingest API**: приём событий через REST (`/api/ingest`) или загрузку файла.
+2. **Raw Events Store**: сохранение сырых (неизменяемых) событий в `data/raw/*.json` (forensic archive).
 3. **Normalization**: разбор CEF/CSV/JSON/text в единую схему `NormalizedEvent`.
-4. **Risk scoring / Prioritization**: расчёт `risk` и `priority` по источнику и маркерам.
-5. **Alerts feed**: критичные события попадают в ленту алертов.
-6. **Correlation rules**: правила SOC-уровня для выявления атак и создания инцидентов.
-7. **Incidents store**: инциденты складываются в in-memory очередь и отображаются в UI.
-
-### Корреляция (текущий минимум)
-- **VPN bruteforce**: серия `VPN_LOGIN_FAIL` от одного `src_ip` за окно времени.
+4. **Enrichment**: обогащение событий данными из Asset DB (CMDB), GeoIP и списками индикаторов компрометации (IOCs).
+5. **Aggregation**: группировка схожих событий (T=5 минут, дедупликация) для снижения нагрузки.
+6. **Risk scoring / Prioritization**: расчёт `risk` и `priority` по источнику, маркерам и критичности актива.
+7. **Alerts feed**: автоматическое создание алертов по высококритичным событиям (priority=HIGH/CRITICAL).
+8. **Correlation rules**: правила SOC-уровня для выявления многошаговых атак и автоматического создания инцидентов.
+9. **Incidents Manager**: управление инцидентами (статусы, SLA, assignee).
+10. **Reporting & Integrations**: вычисление метрик SOC (FP-rate, MTTR), дашборды, webhook-уведомления (Telegram/ServiceDesk).
 
 ### Способ запуска проекта
 
@@ -41,34 +41,50 @@ python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```bash
 ./run.sh
 ```
+
+После запуска доступна UI-панель: [http://127.0.0.1:8000/](http://127.0.0.1:8000/)
+
 ### Структура проекта
 
 ```
 app/
-  main.py                 # FastAPI приложение
-  api/
-    ingest.py             # /api/ingest, /api/ingest-file
+  main.py                 # FastAPI приложение (entrypoint)
+  config.py               # Конфигурация приложения
+  api/                    # REST API Endpoints
     alerts.py             # /api/alerts
     incidents.py          # /api/incidents
+    ingest.py             # /api/ingest
+    integrations.py       # API для интеграций и webhook'ов
+    reporting.py          # /api/reports, /api/metrics
     sim.py                # /api/sim/* (генератор и демо-атаки)
-    ui.py                 # UI панель (GET /)
-  pipeline/
-    collector.py          # orchestrator: raw -> normalize -> score -> correlate
-    normalize.py          # разбор форматов + приведение к NormalizedEvent
-    scoring.py            # risk / priority
-    correlate.py          # правила корреляции (инциденты)
-  schemas/
-    event.py              # NormalizedEvent (Pydantic)
-  services/
-    events_store.py       # in-memory хранилище нормализованных событий
-    alerts_store.py       # in-memory хранилище алертов
-    incidents_store.py    # in-memory хранилище инцидентов
-  simulator/
-    attack_catalog.py     # сценарии атак
-    generator.py          # непрерывная генерация (опционально)
-    run_attack.py         # утилиты симуляции
+    ui.py                 # UI панель мониторинга (GET /)
+  pipeline/               # Обработка событий (Async Workers)
+    pipeline.py           # Оркестратор очереди (Pipeline)
+    collector.py          # Точка входа событий (Raw Store)
+    normalize.py          # Приведение к схеме
+    enrich.py             # Обогащение (CMDB, GeoIP, IOC)
+    aggregate.py          # Агрегация и дедупликация (T=5m)
+    scoring.py            # Расчет Risk и Priority
+    correlate.py          # Корреляция и генерация инцидентов
+  schemas/                # Pydantic схемы
+    event.py              # Схема NormalizedEvent
+  services/               # Бизнес-логика и In-Memory хранилища
+    aggregates_store.py   # Хранилище агрегированных событий
+    alerts_store.py       # Хранилище алертов
+    events_store.py       # Хранилище нормализованных событий
+    incidents_store.py    # Хранилище инцидентов
+    metrics_service.py    # Расчет метрик дашборда
+    reporting.py          # Формирование отчетов (SOC Metrics)
+  simulator/              # Симулятор активности
+    attack_catalog.py     # Сценарии атак (из MITRE ATT&CK)
+    generator.py          # Continuous генерация фона
+    run_attack.py         # Утилиты запуска симуляций
 
-data/raw/                 # сырые события (json)
+data/
+  raw/                    # Сырые события (json)
+  normalized/             # Нормализованные события
+  cmdb/                   # Данные активов и IOCs
+tests/                    # Юнит и e2e тесты
 requirements.txt
 README.md
 ```
