@@ -417,60 +417,67 @@ HTML = """<!doctype html>
     th.col-comment, td.col-comment{ width: 320px; min-width: 320px; max-width: 320px; }
     th.col-actions, td.col-actions{ min-width: 150px; }
 
-    /* Small gap only: textarea should extend up to actions column */
-    td.col-comment{ padding-right: 14px; vertical-align: top; padding-top: 12px; }
-
-    /* Actions cell: SIEM-style alignment */
-    td.col-actions{
+    /* Refactored premium layout for comment and actions */
+    td.col-comment, td.col-actions {
+      padding: 14px 12px;
       vertical-align: top;
-      padding-top: 12px;
-      padding-bottom: 12px;
     }
+    td.col-comment { padding-right: 8px; } /* Closer to the button */
+    td.col-actions { padding-left: 8px; }
 
-    /* Save button: SIEM-style, visually part of row */
-    td.col-actions .tbl-btn{
-      margin: 0;                 /* spacing handled by td padding */
-      border-radius: 12px;
-      background: linear-gradient(135deg, rgba(47,111,237,0.95), rgba(47,111,237,0.70));
-      border: 1px solid rgba(47,111,237,0.55);
-      color: #ffffff;
-      font-weight: 800;
-      letter-spacing: 0.4px;
-      box-sizing: border-box;
-      line-height: 1;            /* text fully centered vertically */
-    }
-    td.col-actions .tbl-btn:hover{
-      filter: brightness(1.04);
-    }
-    td.col-actions .tbl-btn:active{
-      transform: translateY(1px);
-    }
-
-    .tbl-textarea{
-      padding: 9px 10px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: var(--bg2);
-      color: var(--text);
-      font-size: 12px;
-      outline: none;
+    .tbl-comment-box {
+      display: block;
       width: 100%;
-      box-sizing: border-box;
-      min-width: 0;
-      height: 76px;
-      min-height: 76px;
-      max-height: 76px;
-      overflow-y: auto;
-      line-height: 1.35;
+      height: 84px;
       resize: none;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      max-width: 100%;
-      min-width: 100%;
+      margin: 0;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(0,0,0,0.25);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.4;
+      outline: none;
+      box-sizing: border-box;
+      transition: all 0.2s ease;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
     }
-    .tbl-textarea:focus{
-      background: var(--bg);
-      border-color: var(--accent);
-      box-shadow: 0 0 0 4px rgba(56,139,253,0.15);
+    .tbl-comment-box:focus {
+      border-color: rgba(56,139,253,0.6);
+      background: rgba(0,0,0,0.4);
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.2), 0 0 0 3px rgba(56,139,253,0.15);
+    }
+    
+    .tbl-save-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 84px;
+      margin: 0;
+      border-radius: 10px;
+      border: 1px solid rgba(56,139,253,0.5);
+      background: linear-gradient(180deg, rgba(56,139,253,0.15), rgba(56,139,253,0.05));
+      color: #79c0ff;
+      font-weight: 600;
+      font-size: 15px;
+      letter-spacing: 0.5px;
+      box-sizing: border-box;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .tbl-save-btn:hover {
+      background: linear-gradient(180deg, rgba(56,139,253,0.8), rgba(56,139,253,0.6));
+      color: #ffffff;
+      border-color: rgba(56,139,253,1);
+      box-shadow: 0 4px 12px rgba(56,139,253,0.25);
+      transform: translateY(-1px);
+    }
+    .tbl-save-btn:active {
+      transform: translateY(1px);
+      background: rgba(56,139,253,0.9);
+      box-shadow: none;
     }
     .subcell{ margin-top: 4px; font-size: 11px; color: var(--muted); }
 
@@ -1359,8 +1366,8 @@ function renderIncidentsTables(items){
           ${renderRelatedEvents(it.related_events)}
         </div>
       </td>
-      <td class="col-comment"><textarea class="tbl-textarea" style="display:block; box-sizing:border-box; width:100%; height:96px; resize:vertical; margin:0;" data-incident-id="${esc(id)}" data-role="comment" placeholder="Комментарий (сохраняется кнопкой Save)">${esc(comment)}</textarea></td>
-      <td class="col-actions"><button class="tbl-btn" style="display:block; box-sizing:border-box; height:96px; width:100%; margin:0; padding:0 16px; font-size:14px;" data-incident-id="${esc(id)}" data-action="save">Save</button></td>
+      <td class="col-comment"><textarea class="tbl-comment-box" data-incident-id="${esc(id)}" data-role="comment" placeholder="Комментарий (сохраняется кнопкой Save)">${esc(comment)}</textarea></td>
+      <td class="col-actions"><button class="tbl-save-btn" data-incident-id="${esc(id)}" data-action="save">Save</button></td>
     `;
     full.appendChild(row);
   }
