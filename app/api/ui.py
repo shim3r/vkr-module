@@ -433,20 +433,18 @@ HTML = """<!doctype html>
       margin: 0;
       padding: 12px;
       border-radius: 10px;
-      border: 1px solid rgba(255,255,255,0.1);
-      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--border);
+      background: var(--bg2);
       color: var(--text);
       font-size: 13px;
       line-height: 1.4;
       outline: none;
       box-sizing: border-box;
       transition: all 0.2s ease;
-      box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
     }
     .tbl-comment-box:focus {
-      border-color: rgba(56,139,253,0.6);
-      background: rgba(0,0,0,0.4);
-      box-shadow: inset 0 2px 4px rgba(0,0,0,0.2), 0 0 0 3px rgba(56,139,253,0.15);
+      border-color: var(--accent);
+      background: var(--bg);
     }
     
     .tbl-save-btn {
@@ -457,27 +455,20 @@ HTML = """<!doctype html>
       height: 84px;
       margin: 0;
       border-radius: 10px;
-      border: 1px solid rgba(56,139,253,0.5);
-      background: linear-gradient(180deg, rgba(56,139,253,0.15), rgba(56,139,253,0.05));
-      color: #79c0ff;
-      font-weight: 600;
-      font-size: 15px;
-      letter-spacing: 0.5px;
+      border: 1px solid rgba(47,111,237,0.30);
+      background: rgba(47,111,237,0.15);
+      color: var(--text);
+      font-weight: 800;
+      font-size: 14px;
       box-sizing: border-box;
       cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      transition: all 0.1s ease;
     }
     .tbl-save-btn:hover {
-      background: linear-gradient(180deg, rgba(56,139,253,0.8), rgba(56,139,253,0.6));
-      color: #ffffff;
-      border-color: rgba(56,139,253,1);
-      box-shadow: 0 4px 12px rgba(56,139,253,0.25);
-      transform: translateY(-1px);
+      background: rgba(47,111,237,0.25);
     }
     .tbl-save-btn:active {
       transform: translateY(1px);
-      background: rgba(56,139,253,0.9);
-      box-shadow: none;
     }
     .subcell{ margin-top: 4px; font-size: 11px; color: var(--muted); }
 
