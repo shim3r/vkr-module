@@ -1369,8 +1369,8 @@ function renderIncidentsTables(items){
           ${renderRelatedEvents(it.related_events)}
         </div>
       </td>
-      <td class="col-comment"><textarea class="tbl-textarea" rows="2" style="width:100%" data-incident-id="${esc(id)}" data-role="comment" placeholder="Комментарий (сохраняется кнопкой Save)">${esc(comment)}</textarea></td>
-      <td class="col-actions"><button class="tbl-btn" style="height:100%; min-height:50px; padding:0 16px; font-size:14px;" data-incident-id="${esc(id)}" data-action="save">Save</button></td>
+      <td class="col-comment"><textarea class="tbl-textarea" style="width:100%; height:96px; resize:vertical;" data-incident-id="${esc(id)}" data-role="comment" placeholder="Комментарий (сохраняется кнопкой Save)">${esc(comment)}</textarea></td>
+      <td class="col-actions"><button class="tbl-btn" style="height:96px; width:100%; padding:0 16px; font-size:14px;" data-incident-id="${esc(id)}" data-action="save">Save</button></td>
     `;
     full.appendChild(row);
   }
