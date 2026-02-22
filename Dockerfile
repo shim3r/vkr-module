@@ -35,7 +35,7 @@ RUN pip install --no-cache-dir /wheels/*
 COPY . .
 
 # Create data directories and set permissions
-RUN mkdir -p /app/data/raw /app/data/normalized /app/data/aggregated /app/data/alerts /app/data/incidents /app/data/cmdb && \
+RUN mkdir -p /app/data/raw /app/data/normalized /app/data/aggregated /app/data/alerts /app/data/incidents /app/data/cmdb /app/data/simulator && \
     chmod -R 777 /app/data
 
 # Create a non-root user

@@ -4,7 +4,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 import httpx
 
-LIVE_DIR = Path("synthetic_logs_live")
+from app.config import SIMULATOR_DIR
+
+LIVE_DIR = SIMULATOR_DIR / "synthetic_logs_live"
 LIVE_DIR.mkdir(parents=True, exist_ok=True)
 
 RUNNING = False

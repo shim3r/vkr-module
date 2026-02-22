@@ -10,6 +10,7 @@ AGGREGATED_DIR = DATA_ROOT / "aggregated"
 ALERTS_DIR = DATA_ROOT / "alerts"
 INCIDENTS_DIR = DATA_ROOT / "incidents"
 CMDB_DIR = DATA_ROOT / "cmdb"
+SIMULATOR_DIR = DATA_ROOT / "simulator"
 
 ASSETS_PATH = CMDB_DIR / "assets.json"
 
