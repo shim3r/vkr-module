@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: vkr-siem-module
+    runtime: docker
+    plan: standard # Required for persistent disks
+    envVars:
+      - key: SIEM_DATA_DIR
+        value: /app/data
+      - key: LOG_LEVEL
+        value: INFO
+      - key: ALLOWED_ORIGINS
+        value: "*"
+    disk:
+      name: siem-data
+      mountPath: /app/data
+      sizeGB: 1
+    healthCheckPath: /health

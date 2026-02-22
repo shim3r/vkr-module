@@ -1,5 +1,6 @@
-from pathlib import Path
 import os
+import logging
+from pathlib import Path
 
 DATA_ROOT = Path(os.getenv("SIEM_DATA_DIR", "data"))
 

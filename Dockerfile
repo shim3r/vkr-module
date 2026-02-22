@@ -1,25 +1,49 @@
-FROM python:3.11-slim
+# Stage 1: Build dependencies
+FROM python:3.11-slim as builder
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    SIEM_DATA_DIR=/app/data
-
-# Create and set working directory
 WORKDIR /app
 
-# Install dependencies
-COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-# Copy the application code
-COPY . /app/
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# Create data directories if they don't exist
-RUN mkdir -p /app/data/raw /app/data/normalized /app/data/aggregated /app/data/alerts /app/data/incidents /app/data/cmdb
+COPY requirements.txt .
+RUN pip wheel --no-cache-dir --no-deps --wheel-dir /app/wheels -r requirements.txt
 
-# Expose the API port
+
+# Stage 2: Final image
+FROM python:3.11-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    SIEM_DATA_DIR=/app/data \
+    LOG_LEVEL=INFO
+
+# Install gunicorn for production
+RUN pip install --no-cache-dir gunicorn uvicorn
+
+COPY --from=builder /app/wheels /wheels
+COPY --from=builder /app/requirements.txt .
+RUN pip install --no-cache-dir /wheels/*
+
+# Copy application code
+COPY . .
+
+# Create data directories and set permissions
+RUN mkdir -p /app/data/raw /app/data/normalized /app/data/aggregated /app/data/alerts /app/data/incidents /app/data/cmdb && \
+    chmod -R 777 /app/data
+
+# Create a non-root user
+RUN adduser --disabled-password --gecos "" siemuser
+USER siemuser
+
 EXPOSE 8000
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run with Gunicorn for better production stability
+# Using $PORT environment variable if defined (standard for Render/Heroku)
+CMD ["sh", "-c", "gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:${PORT:-8000}"]
