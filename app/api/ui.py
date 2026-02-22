@@ -430,9 +430,6 @@ HTML = """<!doctype html>
     /* Save button: SIEM-style, visually part of row */
     td.col-actions .tbl-btn{
       margin: 0;                 /* spacing handled by td padding */
-      display: flex;
-      align-items: center;
-      justify-content: center;
       border-radius: 12px;
       background: linear-gradient(135deg, rgba(47,111,237,0.95), rgba(47,111,237,0.70));
       border: 1px solid rgba(47,111,237,0.55);
