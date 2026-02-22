@@ -1,0 +1,14 @@
+.venv
+__pycache__
+*.pyc
+.git
+.gitignore
+.dockerignore
+data/raw/*
+data/normalized/*
+data/aggregated/*
+data/alerts/*
+data/incidents/*
+.idea
+.vscode
+.DS_Store
