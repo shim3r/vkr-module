@@ -103,15 +103,37 @@ HTML = """<!doctype html>
       --sidebar2: #0d1117;
       --accent: #388bfd;
       --accent2: rgba(56,139,253,0.15);
-      --good: #3fb950;
+      --good: #1FB141; /* Aceframe green */
       --warn: #d29922;
       --bad: #f85149;
-      --shadow: 0 1px 3px rgba(0,0,0,0.3);
-      --radius: 6px;
+      --shadow: 0 8px 32px rgba(0,0,0,0.3);
+      --radius: 24px; /* Aceframe extreme rounding */
+      --radius-sm: 12px;
       --mono: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
       --row-odd: rgba(255,255,255,0.02);
       --row-hover: rgba(56,139,253,0.08);
       --row-selected: rgba(56,139,253,0.18);
+      --glass: rgba(255, 255, 255, 0.03);
+      --glass-border: rgba(255, 255, 255, 0.08);
+    }
+
+    body.light-theme {
+      --bg: #F5F5F7;
+      --bg2: #FFFFFF;
+      --panel: #FFFFFF;
+      --panel2: #F9FAFB;
+      --border: rgba(0,0,0,0.06);
+      --border2: rgba(0,0,0,0.04);
+      --text: #1d1d1f;
+      --text2: #424245;
+      --muted: rgba(0,0,0,0.5);
+      --muted2: rgba(0,0,0,0.3);
+      --sidebar: #FFFFFF;
+      --sidebar2: #F5F5F7;
+      --accent: #0071e3;
+      --shadow: 0 8px 32px rgba(0,0,0,0.08);
+      --glass: rgba(255, 255, 255, 0.7);
+      --glass-border: rgba(0, 0, 0, 0.05);
     }
     *{ box-sizing: border-box; }
     html, body{ height: 100%; }
@@ -135,22 +157,24 @@ HTML = """<!doctype html>
 
     .sidebar{
       background: linear-gradient(180deg, var(--sidebar), var(--sidebar2));
-      color: rgba(255,255,255,0.92);
-      border-right: 1px solid rgba(255,255,255,0.06);
-      padding: 16px;
+      color: var(--text);
+      border-right: 1px solid var(--border);
+      padding: 24px 16px;
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 20px;
       overflow-y: auto;
       scrollbar-width: thin;
-      scrollbar-color: rgba(255,255,255,0.1) transparent;
+      scrollbar-color: var(--border) transparent;
+      z-index: 100;
     }
     .brand{
-      display:flex; align-items:center; gap: 12px;
-      padding: 10px 10px;
-      border-radius: 14px;
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.08);
+      display:flex; align-items:center; gap: 14px;
+      padding: 12px;
+      border-radius: var(--radius-sm);
+      background: var(--glass);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--glass-border);
     }
     .logo{
       width: 42px; height: 42px;
@@ -164,21 +188,22 @@ HTML = """<!doctype html>
     .brand .t b{ display:block; font-size: 14px; letter-spacing: 0.2px; }
     .brand .t span{ display:block; font-size: 12px; color: rgba(255,255,255,0.65); margin-top: 2px; }
 
-    .nav{ display:flex; flex-direction: column; gap: 6px; }
+    .nav{ display:flex; flex-direction: column; gap: 8px; }
     .nav a{
       text-decoration: none;
-      color: rgba(255,255,255,0.88);
-      padding: 10px 12px;
-      border-radius: 12px;
-      border: 1px solid rgba(255,255,255,0.06);
-      background: rgba(255,255,255,0.03);
+      color: var(--text2);
+      padding: 12px 16px;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      background: transparent;
       display:flex; align-items:center; justify-content: space-between;
       gap: 10px;
-      font-size: 13px;
+      font-size: 14px;
+      transition: all 0.2s ease;
     }
-    .nav a:hover{ background: rgba(255,255,255,0.07); border-color: rgba(255,255,255,0.10); }
-    .nav a.active{ background: rgba(47,111,237,0.22); border-color: rgba(47,111,237,0.35); }
-    .nav small{ color: rgba(255,255,255,0.55); font-weight: 600; }
+    .nav a:hover{ background: var(--bg2); border-color: var(--border); }
+    .nav a.active{ background: var(--accent2); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+    .nav small{ color: var(--muted); font-weight: 600; font-size: 11px; }
 
     .sidebar .footer{
       margin-top: auto;
@@ -208,44 +233,58 @@ HTML = """<!doctype html>
 
     .pill{
       display:flex; align-items:center; gap: 10px;
-      padding: 10px 12px;
-      border-radius: 14px;
-      background: var(--panel);
-      border: 1px solid var(--border);
+      padding: 8px 16px;
+      border-radius: 999px;
+      background: var(--glass);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--glass-border);
       box-shadow: var(--shadow);
-      min-height: 42px;
+      min-height: 40px;
     }
     .dot{ width: 10px; height: 10px; border-radius: 999px; background: #94a3b8; }
-    .dot.ok{ background: var(--good); }
-    .dot.warn{ background: var(--warn); }
-    .dot.bad{ background: var(--bad); }
+    .dot.ok{ background: var(--good); box-shadow: 0 0 12px var(--good); }
+    .dot.warn{ background: var(--warn); box-shadow: 0 0 12px var(--warn); }
+    .dot.bad{ background: var(--bad); box-shadow: 0 0 12px var(--bad); }
 
     select{
-      padding: 10px 12px;
-      border-radius: 12px;
+      padding: 10px 16px;
+      border-radius: var(--radius-sm);
       border: 1px solid var(--border);
       background: var(--panel);
       color: var(--text);
       outline: none;
       min-width: 280px;
       box-shadow: var(--shadow);
+      appearance: none;
     }
 
     .btn{
-      padding: 10px 12px;
-      border-radius: 12px;
+      padding: 10px 20px;
+      border-radius: 999px;
       border: 1px solid var(--border);
       background: var(--panel);
       color: var(--text);
       cursor: pointer;
-      font-weight: 700;
-      font-size: 13px;
+      font-weight: 600;
+      font-size: 14px;
       box-shadow: var(--shadow);
-      transition: transform 0.06s ease;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
     }
-    .btn:active{ transform: translateY(1px); }
-    .btn.primary{ background: linear-gradient(135deg, rgba(47,111,237,0.95), rgba(47,111,237,0.70)); color: #fff; border-color: rgba(47,111,237,0.55); }
-    .btn.danger{ background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.30); }
+    .btn:hover{ transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.15); }
+    .btn:active{ transform: translateY(0); }
+    .btn.primary{ background: var(--text); color: var(--bg); border: none; }
+    .btn.danger{ background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.2); color: var(--bad); }
+    
+    .theme-toggle {
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      border-radius: 50%;
+    }
 
     .tbl-input{
       padding: 7px 10px;
@@ -301,17 +340,19 @@ HTML = """<!doctype html>
       border-radius: var(--radius);
       box-shadow: var(--shadow);
       overflow: hidden;
+      transition: all 0.3s ease;
     }
+    .card:hover{ border-color: var(--accent); }
     .card .hdr{
-      padding: 12px 14px;
+      padding: 20px 24px;
       display:flex; align-items:center; justify-content: space-between;
       gap: 10px;
       border-bottom: 1px solid var(--border);
       background: var(--panel2);
     }
-    .card .hdr b{ font-size: 13px; color: var(--text); }
-    .card .hdr span{ color: var(--muted); font-size: 12px; }
-    .card .body{ padding: 14px; }
+    .card .hdr b{ font-size: 15px; color: var(--text); letter-spacing: -0.01em; }
+    .card .hdr span{ color: var(--muted); font-size: 13px; }
+    .card .body{ padding: 24px; }
 
     .kpis{ display:grid; gap: 12px; grid-template-columns: 1fr 1fr; }
     @media (min-width: 980px){ .kpis{ grid-template-columns: repeat(5, 1fr);} }
@@ -557,6 +598,7 @@ HTML = """<!doctype html>
         </div>
 
       <div class="rightbar">
+        <button class="btn theme-toggle" id="themeToggle" title="Toggle Light/Dark Theme">🌓</button>
         <div class="pill">
           <div id="dot" class="dot"></div>
           <div class="mono muted" id="status">Ready</div>
@@ -580,23 +622,18 @@ HTML = """<!doctype html>
       </div>
 
       <div class="card" style="margin-bottom: 14px;">
-        <div class="hdr"><b>Pipeline Overview</b><span>по блок-схеме</span></div>
-        <div class="body">
-          <div class="pipeline">
-            <div class="step"><b>Collectors</b><span class="muted">/api/ingest</span></div><span class="arrow">→</span>
-            <div class="step"><b>Raw store</b><span class="muted">data/raw</span></div><span class="arrow">→</span>
-            <div class="step"><b>Normalization</b><span class="muted">Unified schema</span></div><span class="arrow">→</span>
-            <div class="step"><b>Enrichment</b><span class="muted">Asset DB</span></div><span class="arrow">→</span>
-            <div class="step"><b>Aggregation</b><span class="muted">T=5m</span></div><span class="arrow">→</span>
-            <div class="step"><b>Risk scoring</b><span class="muted">priority/risk</span></div><span class="arrow">→</span>
-            <div class="step"><b>Correlation</b><span class="muted">rules</span></div><span class="arrow">→</span>
-            <div class="step"><b>Incidents</b><span class="muted">statuses/SLA</span></div><span class="arrow">→</span>
-            <div class="step"><b>Reporting</b><span class="muted">dashboards</span></div>
+        <div class="hdr"><b>Correlation Flow (Pipeline)</b><span>на основе архитектуры ACE</span></div>
+        <div class="body" style="padding: 0; position: relative; background: var(--bg); overflow: hidden; height: 500px; border-radius: 0 0 var(--radius) var(--radius);">
+          <!-- Dot Grid Background -->
+          <div style="position: absolute; inset: 0; background-image: radial-gradient(var(--border) 1px, transparent 1px); background-size: 24px 24px; opacity: 0.4;"></div>
+          
+          <div id="correlationGraph" style="width: 100%; height: 100%; position: relative; z-index: 1;">
+            <!-- SVG Graph will be injected here -->
           </div>
-
-          <div style="height:12px"></div>
+        </div>
+        <div class="body" style="border-top: 1px solid var(--border); background: var(--panel2);">
           <div class="kpis">
-            <div class="kpi"><div class="t">Raw events</div><div class="v" id="kpiRaw">0</div><div class="s" id="kpiRawS">/api/events (если есть)</div></div>
+            <div class="kpi"><div class="t">Raw events</div><div class="v" id="kpiRaw">0</div><div class="s" id="kpiRawS">/api/events</div></div>
             <div class="kpi"><div class="t">Aggregated events</div><div class="v" id="kpiAgg">0</div><div class="s">/api/events-aggregated</div></div>
             <div class="kpi"><div class="t">Alerts</div><div class="v" id="kpiAlerts">0</div><div class="s">/api/alerts</div></div>
             <div class="kpi"><div class="t">Incidents</div><div class="v" id="kpiIncidents">0</div><div class="s">/api/incidents</div></div>
@@ -608,8 +645,8 @@ HTML = """<!doctype html>
       <div class="grid cols-2" style="margin-bottom: 14px;">
         <div class="card">
           <div class="hdr"><b>Последние алерты</b><span>последние 10</span></div>
-          <div class="body" style="padding:0">
-            <table>
+          <div class="body table-scroll" style="padding:0">
+            <table class="tbl-fixed" style="min-width: 800px;">
               <thead>
                 <tr>
                   <th>Уровень</th>
@@ -626,8 +663,8 @@ HTML = """<!doctype html>
 
         <div class="card">
           <div class="hdr"><b>Последние инциденты</b><span>последние 10</span></div>
-          <div class="body" style="padding:0">
-            <table>
+          <div class="body table-scroll" style="padding:0">
+            <table class="tbl-fixed" style="min-width: 800px;">
               <thead>
                 <tr>
                   <th>Severity</th>
@@ -693,12 +730,11 @@ HTML = """<!doctype html>
       </div>
     </section>
 
-    <!-- AGGREGATED -->
     <section id="sec-aggregated" class="section">
       <div class="card">
         <div class="hdr"><b>Агрегированные события</b><span>T=5 минут, dedup</span></div>
-        <div class="body" style="padding:0">
-          <table>
+        <div class="body table-scroll" style="padding:0">
+          <table class="tbl-fixed">
             <thead>
               <tr>
                 <th>count</th>
@@ -947,54 +983,147 @@ function toggleDetails(incidentId){
   }
 }
 
-function renderRelatedEvents(events){
-  if(!events || events.length === 0) return '<div class="muted">Связанные события (evidence) не найдены.</div>';
+function renderRelatedEvents(events, incident){
+  if(!events || events.length === 0) return '<div class="muted">Связанные события не найдены для построения цепочки атак.</div>';
   
-  // Sort chronically
-  const sorted = [...events].sort((a,b) => {
-    const ta = new Date(a.received_at || 0).getTime();
-    const tb = new Date(b.received_at || 0).getTime();
-    return ta - tb;
+  // 1. Entity Extraction & Grouping
+  const nodes = [];
+  const edges = [];
+  
+  const sorted = [...events].sort((a,b) => new Date(a.received_at || 0) - new Date(b.received_at || 0));
+  
+  // Heuristic for Stages (MITRE-like)
+  const getStage = (type) => {
+    const t = String(type).toUpperCase();
+    if(t.includes('SCAN') || t.includes('RECON')) return 1;
+    if(t.includes('LOGIN_FAIL') || t.includes('AUTH_FAIL')) return 2;
+    if(t.includes('LOGIN_SUCCESS') || t.includes('AUTH_SUCCESS')) return 3;
+    if(t.includes('PROCESS') || t.includes('MALWARE') || t.includes('DETECT')) return 4;
+    return 2.5; // Default intermediate
+  };
+
+  // 2. Build Nodes (Unique events as primary nodes)
+  sorted.forEach((e, i) => {
+    nodes.push({
+      id: `evt_${i}`,
+      label: e.event_type || 'Unknown',
+      time: fmtTime(e.received_at).split(' ')[1],
+      user: e.user || incident.user || '',
+      host: e.host || incident.host || '',
+      ip: e.src_ip || incident.src_ip || '',
+      stage: getStage(e.event_type),
+      severity: e.severity || e.priority || 'medium'
+    });
   });
 
-  let html = '<div style="margin-bottom:6px;font-weight:600;color:#93c5fd;">Таймлайн инцидента (Evidence Events):</div>';
-  html += '<div style="display:flex; flex-direction:column; gap:4px; max-height:200px; overflow-y:auto; padding-right:8px;">';
+  // 3. Build Causal Edges (Automatic Chain Construction)
+  for(let i=0; i<nodes.length; i++){
+    for(let j=i+1; j<nodes.length; j++){
+      const a = nodes[i];
+      const b = nodes[j];
+      
+      // Causality: Shared User, IP, or Host + Temporal Sequence
+      let reason = '';
+      if(a.user && a.user === b.user) reason = 'Shared User';
+      else if(a.ip && a.ip === b.ip) reason = 'Shared IP';
+      else if(a.host && a.host === b.host) reason = 'Shared Host';
+      
+      if(reason){
+        edges.push({ source: a.id, target: b.id, label: reason });
+        break; // Only link to the immediate next causal event to avoid spiderwebs
+      }
+    }
+  }
+
+  // 4. SVG Rendering (DAG Layout)
+  const width = 800;
+  const height = 400;
+  const stageWidth = width / 5;
+  const rowGap = 70;
   
-  for(let i=0; i<sorted.length; i++){
-    const e = sorted[i];
-    const ts = fmtTime(e.received_at || e.timestamp_utc);
-    const type = esc(e.event_type || 'UNKNOWN');
-    const src = esc(e.source_type) || '—';
-    const sip = esc(e.src_ip || '');
-    const dip = esc(e.dst_ip || e.host || '');
-    const usr = esc(e.user || '');
+  // Assign grid positions
+  const stageCounts = {};
+  nodes.forEach(n => {
+    n.x = (n.stage * stageWidth) - (stageWidth / 2);
+    stageCounts[n.stage] = (stageCounts[n.stage] || 0) + 1;
+    n.y = (stageCounts[n.stage] * rowGap) + 50;
+  });
+
+  let svg = `<svg viewBox="0 0 ${width} ${height}" style="width:100%; height:auto; overflow:visible;">
+    <defs>
+      <marker id="attackArrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="var(--accent)" opacity="0.6" />
+      </marker>
+      <filter id="nodeGlow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="2" result="blur" />
+        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+      </filter>
+    </defs>
     
-    // Draw connection line
-    const isLast = (i === sorted.length - 1);
-    
-    html += `
-      <div style="display:flex; align-items:stretch; gap:10px;">
-        <div style="display:flex; flex-direction:column; align-items:center; width:12px;">
-          <div style="width:8px; height:8px; border-radius:50%; background:#3b82f6; margin-top:5px;"></div>
-          ${!isLast ? '<div style="flex:1; width:2px; background:rgba(59,130,246,0.3); margin-top:2px;"></div>' : ''}
-        </div>
-        <div style="flex:1; background:rgba(255,255,255,0.05); padding:6px 10px; border-radius:4px; margin-bottom:4px;">
-          <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
-            <span style="color:#bfdbfe; font-weight:600;">${type}</span>
-            <span style="color:#9ca3af; font-size:10.5px;">${ts}</span>
-          </div>
-          <div style="color:#e5e7eb; display:flex; gap:10px; flex-wrap:wrap;">
-             <span><span class="muted">src:</span> ${sip || '—'}</span>
-             <span><span class="muted">target:</span> ${dip || '—'}</span>
-             <span><span class="muted">user:</span> ${usr || '—'}</span>
-             <span><span class="muted">sensor:</span> ${src}</span>
-          </div>
+    <!-- Stage Background Labels -->
+    <g opacity="0.1" font-size="10" font-weight="700" letter-spacing="2">
+      <text x="${stageWidth*0.5}" y="30" text-anchor="middle">RECON</text>
+      <text x="${stageWidth*1.5}" y="30" text-anchor="middle">ACCESS</text>
+      <text x="${stageWidth*2.5}" y="30" text-anchor="middle">ESTABLISH</text>
+      <text x="${stageWidth*3.5}" y="30" text-anchor="middle">LATERAL</text>
+      <text x="${stageWidth*4.5}" y="30" text-anchor="middle">IMPACT</text>
+      <line x1="${stageWidth}" y1="40" x2="${stageWidth}" y2="${height}" stroke="var(--border)" stroke-dasharray="4,4" />
+      <line x1="${stageWidth*2}" y1="40" x2="${stageWidth*2}" y2="${height}" stroke="var(--border)" stroke-dasharray="4,4" />
+      <line x1="${stageWidth*3}" y1="40" x2="${stageWidth*3}" y2="${height}" stroke="var(--border)" stroke-dasharray="4,4" />
+      <line x1="${stageWidth*4}" y1="40" x2="${stageWidth*4}" y2="${height}" stroke="var(--border)" stroke-dasharray="4,4" />
+    </g>
+  `;
+
+  // Draw Edges (Bézier Curves)
+  edges.forEach(e => {
+    const s = nodes.find(n => n.id === e.source);
+    const t = nodes.find(n => n.id === e.target);
+    const cp1x = s.x + (t.x - s.x) / 2;
+    svg += `
+      <path d="M ${s.x} ${s.y} C ${cp1x} ${s.y}, ${cp1x} ${t.y}, ${t.x} ${t.y}" 
+            stroke="var(--accent)" stroke-width="1.5" fill="none" opacity="0.4"
+            marker-end="url(#attackArrow)">
+        <animate attributeName="stroke-dasharray" from="0,10" to="10,0" dur="2s" repeatCount="indefinite" />
+        <text><title>${e.label}</title></text>
+      </path>`;
+  });
+
+  // Draw Nodes
+  nodes.forEach(n => {
+    const col = n.severity === 'critical' ? 'var(--bad)' : (n.severity === 'high' ? 'var(--warn)' : 'var(--accent)');
+    svg += `
+      <g transform="translate(${n.x}, ${n.y})">
+        <rect x="-65" y="-22" width="130" height="44" rx="10" fill="var(--panel2)" stroke="${col}" stroke-width="1.5" filter="${n.severity === 'critical' ? 'url(#nodeGlow)' : 'none'}" />
+        <text y="-4" text-anchor="middle" font-size="11" font-weight="700" fill="var(--text)">${esc(n.label)}</text>
+        <text y="12" text-anchor="middle" font-size="9" fill="var(--muted)" font-family="monospace">${n.time}</text>
+        
+        <!-- Entity Icons (Small dots) -->
+        <circle cx="-50" cy="12" r="2.5" fill="${n.ip ? 'var(--bad)' : 'transparent'}" title="IP present" />
+        <circle cx="-42" cy="12" r="2.5" fill="${n.user ? 'var(--warn)' : 'transparent'}" title="User present" />
+        <circle cx="-34" cy="12" r="2.5" fill="${n.host ? 'var(--ok)' : 'transparent'}" title="Host present" />
+        
+        <title>User: ${esc(n.user)}\nHost: ${esc(n.host)}\nIP: ${esc(n.ip)}</title>
+      </g>`;
+  });
+
+  svg += '</svg>';
+
+  return `
+    <div class="attack-chain-box">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid var(--border); padding-bottom:10px;">
+        <div style="font-weight:700; color:var(--accent); font-size:13px;">АВТОМАТИЧЕСКАЯ ЦЕПОЧКА АТАК (GRAPH CORRELATION)</div>
+        <div style="font-size:10px; display:flex; gap:10px;">
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--bad);"></span> IP Link</span>
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--warn);"></span> User Link</span>
+          <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--ok);"></span> Host Link</span>
         </div>
       </div>
-    `;
-  }
-  html += '</div>';
-  return html;
+      ${svg}
+      <div style="margin-top:15px; padding:10px; background:rgba(0,0,0,0.2); border-radius:8px; border:1px solid var(--border); font-size:11px;">
+        <b style="color:var(--warn);">Метод:</b> На основе графа связей типов событий. Реберная связь устанавливается при совпадении ключевых атрибутов (Сущности) в скользящем окне корреляции.
+      </div>
+    </div>
+  `;
 }
 
 async function patchIncident(incidentId, payload){
@@ -1364,8 +1493,8 @@ function renderIncidentsTables(items){
       <td>
         <div style="font-weight:600;margin-bottom:10px;margin-left:6px;">${esc(title)}</div>
         <button class="tbl-btn" style="width:100%; margin-top:8px;" onclick="toggleDetails('${esc(id)}')">Показать историю корреляции (Related Events)</button>
-        <div id="details-${esc(id)}" class="related-events-box" style="display:${openDetails.has(id) ? 'block' : 'none'}; margin-top:10px; padding:10px; background:rgba(0,0,0,0.2); border-left:3px solid #3b82f6; border-radius:4px; font-size:11.5px;">
-          ${renderRelatedEvents(it.related_events)}
+        <div id="details-${esc(id)}" class="related-events-box" style="display:${openDetails.has(id) ? 'block' : 'none'}; margin-top:10px; padding:15px; background:var(--bg); border:1px solid var(--border); border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+          ${renderRelatedEvents(it.related_events, it)}
         </div>
       </td>
       <td class="col-comment"><textarea class="tbl-comment-box" data-incident-id="${esc(id)}" data-role="comment" placeholder="Комментарий (сохраняется кнопкой Save)">${esc(comment)}</textarea></td>
@@ -1676,10 +1805,185 @@ async function resetData(){
   await refresh();
 }
 
+// ---------------------------
+// Correlation Graph (SVG) - Refined Node-based Design
+// ---------------------------
+function renderCorrelationGraph() {
+  const container = document.getElementById('correlationGraph');
+  if (!container) return;
+  
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  if(w < 100) return; // Wait for layout
+
+  const nodes = [
+    // Column 1: Input
+    { id: 'in_agent', label: 'Агент Endpoint', type: 'Точка входа', col: 0, row: 1 },
+    { id: 'in_syslog', label: 'Logstash', type: 'Точка входа', col: 0, row: 3 },
+    
+    // Column 2: Transform
+    { id: 'norm_endp', label: 'Нормализатор для Endp...', type: 'VRL-трансформация', col: 1, row: 1 },
+    
+    // Column 3: Filters
+    { id: 'filt_linux', label: 'Linux Object access events', type: 'Фильтр', col: 2, row: 0 },
+    { id: 'filt_exch', label: 'Exchange events', type: 'Фильтр', col: 2, row: 1 },
+    { id: 'filt_dns', label: 'DNS events', type: 'Фильтр', col: 2, row: 2 },
+    { id: 'filt_win', label: 'Windows Security events', type: 'Фильтр', col: 2, row: 3 },
+    { id: 'filt_sys', label: 'Windows sysmon events', type: 'Фильтр', col: 2, row: 4 },
+    
+    // Column 4: Normalizers
+    { id: 'norm_linux', label: 'Linux Object access enric...', type: 'Нормализатор', col: 3, row: 0 },
+    { id: 'norm_exch', label: 'Exchange normalizer', type: 'Нормализатор', col: 3, row: 1 },
+    { id: 'norm_dns', label: 'DNS Debug normalizer', type: 'Нормализатор', col: 3, row: 2 },
+    { id: 'norm_win', label: 'Windows event security n...', type: 'Нормализатор', col: 3, row: 3 },
+    { id: 'norm_sys', label: 'Windows sysmon normali...', type: 'Нормализатор', col: 3, row: 4 },
+    
+    // Column 5: Global Transform & Final
+    { id: 'norm_global', label: 'Event_Normalizer', type: 'VRL-трансформация', col: 4, row: 1 },
+    { id: 'storage', label: 'Event storage', type: 'Конечная точка', col: 5, row: 1 },
+    
+    { id: 'filt_logon', label: 'Logon activity', type: 'Фильтр', col: 4, row: 3 },
+    { id: 'bus_events', label: 'Analytical events', type: 'Шина - Получение', col: 5, row: 3 }
+  ];
+
+  const links = [
+    { source: 'in_agent', target: 'norm_endp' },
+    { source: 'norm_endp', target: 'filt_linux' },
+    { source: 'norm_endp', target: 'filt_exch' },
+    { source: 'norm_endp', target: 'filt_dns' },
+    
+    { source: 'in_syslog', target: 'filt_win' },
+    { source: 'in_syslog', target: 'filt_sys' },
+    
+    { source: 'filt_linux', target: 'norm_linux' },
+    { source: 'filt_exch', target: 'norm_exch' },
+    { source: 'filt_dns', target: 'norm_dns' },
+    { source: 'filt_win', target: 'norm_win' },
+    { source: 'filt_sys', target: 'norm_sys' },
+    
+    { source: 'norm_linux', target: 'norm_global' },
+    { source: 'norm_exch', target: 'norm_global' },
+    { source: 'norm_dns', target: 'norm_global' },
+    
+    { source: 'norm_win', target: 'filt_logon' },
+    { source: 'norm_sys', target: 'filt_logon' },
+    
+    { source: 'norm_global', target: 'storage' },
+    { source: 'filt_logon', target: 'storage' },
+    { source: 'filt_logon', target: 'bus_events' }
+  ];
+
+  const colWidth = w / 6;
+  const rowHeight = h / 5;
+  const nodeW = 180;
+  const nodeH = 46;
+  const nodePadding = 15;
+
+  let html = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="overflow: visible;">`;
+  
+  // Define gradients and markers
+  html += `
+    <defs>
+      <linearGradient id="linkGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" style="stop-color:var(--accent);stop-opacity:0.1" />
+        <stop offset="50%" style="stop-color:var(--accent);stop-opacity:0.6" />
+        <stop offset="100%" style="stop-color:var(--accent);stop-opacity:0.1" />
+      </linearGradient>
+      <filter id="nodeGlow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="3" result="blur" />
+        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+      </filter>
+      <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+        <polygon points="0 0, 10 3.5, 0 7" fill="var(--accent)" opacity="0.6" />
+      </marker>
+    </defs>
+  `;
+
+  // Draw links first (under nodes)
+  links.forEach(link => {
+    const s = nodes.find(n => n.id === link.source);
+    const t = nodes.find(n => n.id === link.target);
+    if (!s || !t) return;
+
+    const x1 = (s.col * colWidth) + nodePadding + nodeW;
+    const y1 = (s.row * rowHeight) + (rowHeight / 2);
+    const x2 = (t.col * colWidth) + nodePadding;
+    const y2 = (t.row * rowHeight) + (rowHeight / 2);
+
+    const cp1x = x1 + (x2 - x1) / 2;
+    const cp2x = x1 + (x2 - x1) / 2;
+    
+    html += `<path d="M ${x1} ${y1} C ${cp1x} ${y1}, ${cp2x} ${y2}, ${x2} ${y2}" 
+              stroke="url(#linkGrad)" stroke-width="1.5" fill="none" 
+              marker-end="url(#arrowhead)" opacity="0.8">
+              <animate attributeName="stroke-dasharray" from="0,10" to="10,0" dur="2s" repeatCount="indefinite" />
+            </path>`;
+  });
+
+  // Draw nodes
+  nodes.forEach(n => {
+    const x = (n.col * colWidth) + nodePadding;
+    const y = (n.row * rowHeight) + (rowHeight / 2) - (nodeH / 2);
+
+    html += `
+      <g class="graph-node" transform="translate(${x}, ${y})">
+        <!-- Node Type Header -->
+        <text y="-8" font-size="10" fill="var(--warn)" font-weight="600" opacity="0.8">${n.type}</text>
+        
+        <!-- Node Box -->
+        <rect width="${nodeW}" height="${nodeH}" rx="8" ry="8" 
+              fill="var(--panel2)" stroke="var(--border)" stroke-width="1" />
+        
+        <!-- Node Content -->
+        <circle cx="12" cy="${nodeH/2}" r="3" fill="var(--accent)">
+            <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" repeatCount="indefinite" />
+        </circle>
+        
+        <text x="24" y="${nodeH/2 + 5}" font-size="11" font-weight="500" fill="var(--text)">${n.label}</text>
+        
+        <!-- Port Dot -->
+        <circle cx="${nodeW}" cy="${nodeH/2}" r="2.5" fill="var(--border)" stroke="var(--accent)" stroke-width="1" />
+        <circle cx="0" cy="${nodeH/2}" r="2.5" fill="var(--border)" stroke="var(--accent)" stroke-width="1" />
+      </g>
+    `;
+  });
+
+  html += '</svg>';
+  container.innerHTML = html;
+}
+
+// ---------------------------
+// Theme Toggle Logic
+// ---------------------------
+function initTheme() {
+  const toggle = document.getElementById('themeToggle');
+  const stored = localStorage.getItem('vkr-theme');
+  const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+  
+  if (stored === 'light' || (!stored && prefersLight)) {
+    document.body.classList.add('light-theme');
+  }
+
+  toggle.addEventListener('click', () => {
+    document.body.classList.toggle('light-theme');
+    const isLight = document.body.classList.contains('light-theme');
+    localStorage.setItem('vkr-theme', isLight ? 'light' : 'dark');
+    
+    // Redraw charts and graph to match colors
+    setTimeout(() => {
+      refresh();
+      renderCorrelationGraph();
+    }, 50);
+  });
+}
+
 // Init
+initTheme();
 renderSources();
 setRoute(currentRoute());
 setStatus('Operational', 'ok');
+renderCorrelationGraph();
+window.onresize = renderCorrelationGraph;
 refresh();
 setInterval(refresh, 2500);
 </script>
