@@ -203,7 +203,20 @@ class Pipeline:
             if evidence_ids:
                 related = [e for e in all_events() if e.get("event_id") in evidence_ids]
                 inc["related_events"] = related
-            add_incident(inc)
+            stored_inc = add_incident(inc)
+            # Stage 8: ACTIVE RESPONSE — блокировка/изоляция по типу и severity
+            try:
+                from app.services.response_engine import auto_respond
+                response_actions = auto_respond(stored_inc)
+                if response_actions:
+                    stored_inc.setdefault("response_actions", []).extend(response_actions)
+                    logger.info(
+                        "[PIPELINE] Auto-response: %d action(s) for incident %s",
+                        len(response_actions),
+                        stored_inc.get("incident_id"),
+                    )
+            except Exception:
+                logger.exception("[PIPELINE] Auto-response failed for incident %s", inc.get("incident_id"))
 
         logger.info(
             "[SYNC] raw_id=%s type=%s src=%s risk=%.2f priority=%s incidents=%d",
@@ -380,6 +393,19 @@ class Pipeline:
                         stored_inc.get("type"),
                         stored_inc.get("severity"),
                     )
+                    # Stage ACTIVE RESPONSE — применить блокировку/изоляцию
+                    try:
+                        from app.services.response_engine import auto_respond
+                        response_actions = auto_respond(stored_inc)
+                        if response_actions:
+                            stored_inc.setdefault("response_actions", []).extend(response_actions)
+                            logger.info(
+                                "[CORRELATOR] Auto-response: %d action(s) for incident %s",
+                                len(response_actions),
+                                stored_inc.get("incident_id"),
+                            )
+                    except Exception:
+                        logger.exception("[CORRELATOR] Auto-response failed for %s", stored_inc.get("incident_id"))
 
                 # Tag event with incidents count and pass to notification stage
                 event["_incidents"] = incidents

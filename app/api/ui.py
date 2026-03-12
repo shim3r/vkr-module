@@ -586,6 +586,7 @@ HTML = """<!doctype html>
       <a href="#/reports" data-route="reports">Отчёты <small>SOC</small></a>
       <a href="#/metrics" data-route="metrics">Метрики <small>API</small></a>
       <a href="#/simulation" data-route="simulation">Симулятор атак <small>MITRE</small></a>
+      <a href="#/response" data-route="response">Реагирование <small id="navResponse">0</small></a>
     </nav>
 
     
@@ -914,7 +915,79 @@ HTML = """<!doctype html>
       </div>
     </section>
 
-  </main>
+    <!-- RESPONSE -->
+    <section id="sec-response" class="section">
+      <!-- KPI strip -->
+      <div class="grid cols-3" style="margin-bottom:14px;">
+        <div class="card">
+          <div class="hdr"><b>🚫 Заблокированные IP</b><span id="respBlockedIpsCount">0</span></div>
+          <div class="body" id="respBlockedIps" style="font-family:var(--mono);font-size:12px;color:var(--bad);line-height:1.8;">—</div>
+        </div>
+        <div class="card">
+          <div class="hdr"><b>🔒 Изолированные хосты</b><span id="respIsolatedHostsCount">0</span></div>
+          <div class="body" id="respIsolatedHosts" style="font-family:var(--mono);font-size:12px;color:var(--warn);line-height:1.8;">—</div>
+        </div>
+        <div class="card">
+          <div class="hdr"><b>👤 Деактивированные пользователи</b><span id="respBlockedUsersCount">0</span></div>
+          <div class="body" id="respBlockedUsers" style="font-family:var(--mono);font-size:12px;color:var(--muted);line-height:1.8;">—</div>
+        </div>
+      </div>
+
+      <!-- Manual action forms -->
+      <div class="grid cols-3" style="margin-bottom:14px;">
+        <div class="card">
+          <div class="hdr"><b>Блокировка IP вручную</b></div>
+          <div class="body" style="display:flex;flex-direction:column;gap:8px;">
+            <input class="tbl-input" id="manBlockIp" placeholder="IP-адрес (напр. 10.10.10.1)" />
+            <input class="tbl-input" id="manBlockIpReason" placeholder="Причина" />
+            <button class="btn danger" onclick="manualBlockIp()">🚫 Заблокировать IP</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="hdr"><b>Изоляция хоста вручную</b></div>
+          <div class="body" style="display:flex;flex-direction:column;gap:8px;">
+            <input class="tbl-input" id="manIsolateHost" placeholder="Имя хоста (напр. win-srv01)" />
+            <input class="tbl-input" id="manIsolateHostReason" placeholder="Причина" />
+            <button class="btn" style="border-color:rgba(245,158,11,0.4);background:rgba(245,158,11,0.15);color:var(--warn);" onclick="manualIsolateHost()">🔒 Изолировать хост</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="hdr"><b>Деактивация пользователя</b></div>
+          <div class="body" style="display:flex;flex-direction:column;gap:8px;">
+            <input class="tbl-input" id="manDisableUser" placeholder="Имя пользователя (напр. john.doe)" />
+            <input class="tbl-input" id="manDisableUserReason" placeholder="Причина" />
+            <button class="btn" style="border-color:rgba(134,239,172,0.3);background:rgba(134,239,172,0.1);color:#86efac;" onclick="manualDisableUser()">👤 Деактивировать</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions journal -->
+      <div class="card">
+        <div class="hdr">
+          <b>Журнал действий реагирования</b>
+          <span id="respActionsCount" style="color:var(--muted);">0 записей</span>
+          <button class="btn" style="margin-left:auto;" onclick="loadResponseData()">↻ Обновить</button>
+        </div>
+        <div class="body table-scroll" style="padding:0;">
+          <table class="tbl-fixed" style="min-width:1100px;">
+            <thead>
+              <tr>
+                <th style="width:160px;">ID действия</th>
+                <th style="width:160px;">Инцидент</th>
+                <th style="width:130px;">Тип действия</th>
+                <th style="width:200px;">Цель</th>
+                <th style="width:90px;">Статус</th>
+                <th style="width:170px;">Время</th>
+                <th style="width:200px;">Примечание</th>
+                <th style="width:130px;">Управление</th>
+              </tr>
+            </thead>
+            <tbody id="tblResponseActions"><tr><td colspan="8" class="muted" style="padding:14px;">Загрузка...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
 </div>
 
 <script>
@@ -1338,6 +1411,7 @@ const ROUTES = [
   {id:'reports', title:'Отчёты'},
   {id:'metrics', title:'Метрики'},
   {id:'simulation', title:'Симулятор атак'},
+  {id:'response', title:'Активное реагирование'},
 ];
 
 function setRoute(routeId){
@@ -1746,6 +1820,104 @@ async function refresh(){
     document.getElementById('kpiSys').textContent = 'OK';
     document.getElementById('kpiSysS').textContent = 'normal';
   }
+}
+
+// ---------------------------
+// Active Response functions
+// ---------------------------
+async function loadResponseData(){
+  const status = await safeJson('/api/response/status');
+  if(status){
+    const ips = status.blocked_ips || [];
+    const hosts = status.isolated_hosts || [];
+    const users = status.blocked_users || [];
+    document.getElementById('respBlockedIpsCount').textContent = ips.length;
+    document.getElementById('respIsolatedHostsCount').textContent = hosts.length;
+    document.getElementById('respBlockedUsersCount').textContent = users.length;
+    document.getElementById('respBlockedIps').innerHTML = ips.length ? ips.map(ip=>`<div>${ip}</div>`).join('') : '<span class="muted">Нет блокировок</span>';
+    document.getElementById('respIsolatedHosts').innerHTML = hosts.length ? hosts.map(h=>`<div>${h}</div>`).join('') : '<span class="muted">Нет изолированных хостов</span>';
+    document.getElementById('respBlockedUsers').innerHTML = users.length ? users.map(u=>`<div>${u}</div>`).join('') : '<span class="muted">Нет деактивированных пользователей</span>';
+    const navEl = document.getElementById('navResponse');
+    if(navEl) navEl.textContent = status.total_blocked || 0;
+  }
+
+  const actData = await safeJson('/api/response/actions?limit=100');
+  const actions = (actData && actData.actions) ? actData.actions : [];
+  document.getElementById('respActionsCount').textContent = actions.length + ' записей';
+  const tb = document.getElementById('tblResponseActions');
+  tb.innerHTML = '';
+  if(actions.length === 0){
+    tb.innerHTML = '<tr><td colspan="8" class="muted" style="padding:14px;">Действий реагирования ещё нет. Запустите симуляцию атаки.</td></tr>';
+    return;
+  }
+  for(const a of actions){
+    const isRevoked = a.status === 'revoked';
+    const isSkipped = a.status === 'skipped';
+    const statusBadge = isRevoked ? '<span class="badge warn">revoked</span>'
+      : isSkipped ? '<span class="badge">skipped</span>'
+      : a.status === 'applied' ? '<span class="badge ok">applied</span>'
+      : a.status === 'failed' ? '<span class="badge bad">failed</span>'
+      : `<span class="badge">${a.status}</span>`;
+
+    const actionLabel = {
+      block_ip: '🚫 block_ip',
+      isolate_host: '🔒 isolate_host',
+      disable_user: '👤 disable_user',
+      recommend: '💡 recommend',
+    }[a.action_type] || a.action_type;
+
+    const revokeBtn = (!isRevoked && a.status === 'applied')
+      ? `<button class="tbl-btn" style="background:rgba(239,68,68,0.1);border-color:rgba(239,68,68,0.3);color:var(--bad);" onclick="revokeAction('${a.action_id}')">Снять</button>`
+      : '—';
+
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td class="mono" style="font-size:11px;">${a.action_id}</td>
+      <td class="mono" style="font-size:11px;">${a.incident_id || '—'}</td>
+      <td>${actionLabel}</td>
+      <td class="mono" style="font-weight:700;">${a.target || '—'}</td>
+      <td>${statusBadge}</td>
+      <td class="mono" style="font-size:11px;">${fmtTime(a.created_at)}</td>
+      <td class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;" title="${(a.notes||'').replace(/"/g,'&quot;')}">${a.notes || ''}</td>
+      <td>${revokeBtn}</td>
+    `;
+    tb.appendChild(row);
+  }
+}
+
+async function revokeAction(actionId){
+  try{
+    const r = await fetch('/api/response/actions/' + actionId, {method:'DELETE'});
+    if(r.ok){ await loadResponseData(); }
+    else{ alert('Ошибка при отзыве действия: ' + r.status); }
+  }catch(e){ alert('Ошибка: ' + e); }
+}
+
+async function manualBlockIp(){
+  const ip = (document.getElementById('manBlockIp').value || '').trim();
+  const reason = (document.getElementById('manBlockIpReason').value || '').trim() || 'manual';
+  if(!ip){ alert('Введите IP-адрес'); return; }
+  const r = await fetch('/api/response/block-ip', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ip,reason})});
+  if(r.ok){ document.getElementById('manBlockIp').value=''; document.getElementById('manBlockIpReason').value=''; await loadResponseData(); }
+  else{ alert('Ошибка блокировки: ' + r.status); }
+}
+
+async function manualIsolateHost(){
+  const host = (document.getElementById('manIsolateHost').value || '').trim();
+  const reason = (document.getElementById('manIsolateHostReason').value || '').trim() || 'manual';
+  if(!host){ alert('Введите имя хоста'); return; }
+  const r = await fetch('/api/response/isolate-host', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({host,reason})});
+  if(r.ok){ document.getElementById('manIsolateHost').value=''; document.getElementById('manIsolateHostReason').value=''; await loadResponseData(); }
+  else{ alert('Ошибка изоляции: ' + r.status); }
+}
+
+async function manualDisableUser(){
+  const user = (document.getElementById('manDisableUser').value || '').trim();
+  const reason = (document.getElementById('manDisableUserReason').value || '').trim() || 'manual';
+  if(!user){ alert('Введите имя пользователя'); return; }
+  const r = await fetch('/api/response/disable-user', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user,reason})});
+  if(r.ok){ document.getElementById('manDisableUser').value=''; document.getElementById('manDisableUserReason').value=''; await loadResponseData(); }
+  else{ alert('Ошибка деактивации: ' + r.status); }
 }
 
 // ---------------------------

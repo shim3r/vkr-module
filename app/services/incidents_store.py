@@ -141,6 +141,8 @@ def add_incident(inc: Dict) -> Dict:
     # Optional workflow fields
     stored.setdefault("assignee", "")
     stored.setdefault("comment", "")
+    # Active Response: список действий реагирования по данному инциденту
+    stored.setdefault("response_actions", [])
 
     # TO-BE: related_events — hydrate full event objects from events store
     if "related_events" not in stored or not stored["related_events"]:

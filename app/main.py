@@ -11,6 +11,7 @@ from app.api.sim import router as sim_router
 from app.api.ui import router as ui_router
 from app.api.reporting import router as reporting_router
 from app.api.integrations import router as integrations_router
+from app.api.response import router as response_router
 from app.pipeline.pipeline import get_pipeline
 from app.config import ALLOWED_ORIGINS
 
@@ -45,6 +46,7 @@ app.include_router(incidents_router, prefix="/api")
 app.include_router(sim_router, prefix="/api")
 app.include_router(reporting_router, prefix="/api")
 app.include_router(integrations_router, prefix="/api")
+app.include_router(response_router)
 
 
 @app.get("/health")
