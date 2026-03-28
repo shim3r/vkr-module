@@ -587,6 +587,7 @@ HTML = """<!doctype html>
       <a href="#/metrics" data-route="metrics">Метрики <small>API</small></a>
       <a href="#/simulation" data-route="simulation">Симулятор атак <small>MITRE</small></a>
       <a href="#/response" data-route="response">Реагирование <small id="navResponse">0</small></a>
+      <a href="#/playbooks" data-route="playbooks">Автоматизация <small>SOAR</small></a>
     </nav>
 
     
@@ -622,17 +623,8 @@ HTML = """<!doctype html>
         </div>
       </div>
 
-      <div class="card" style="margin-bottom: 14px;">
-        <div class="hdr"><b>Correlation Flow (Pipeline)</b><span>на основе архитектуры ACE</span></div>
-        <div class="body" style="padding: 0; position: relative; background: var(--bg); overflow: hidden; height: 500px; border-radius: 0 0 var(--radius) var(--radius);">
-          <!-- Dot Grid Background -->
-          <div style="position: absolute; inset: 0; background-image: radial-gradient(var(--border) 1px, transparent 1px); background-size: 24px 24px; opacity: 0.4;"></div>
-          
-          <div id="correlationGraph" style="width: 100%; height: 100%; position: relative; z-index: 1;">
-            <!-- SVG Graph will be injected here -->
-          </div>
-        </div>
-        <div class="body" style="border-top: 1px solid var(--border); background: var(--panel2);">
+      <div class="card" style="margin-bottom: 14px; border:none; background:transparent; box-shadow:none;">
+        <div class="body" style="padding: 0; background: transparent;">
           <div class="kpis">
             <div class="kpi"><div class="t">Raw events</div><div class="v" id="kpiRaw">0</div><div class="s" id="kpiRawS">/api/events</div></div>
             <div class="kpi"><div class="t">Aggregated events</div><div class="v" id="kpiAgg">0</div><div class="s">/api/events-aggregated</div></div>
@@ -783,10 +775,74 @@ HTML = """<!doctype html>
 
     <!-- ASSETS -->
     <section id="sec-assets" class="section">
+
+      <!-- KPI Row -->
+      <div class="kpis" id="assetKpis" style="margin-bottom:14px;">
+        <div class="kpi"><div class="t">Всего активов</div><div class="v" id="assetKpiTotal">—</div><div class="s">CMDB records</div></div>
+        <div class="kpi"><div class="t">Online</div><div class="v" id="assetKpiOnline" style="color:var(--good)">—</div><div class="s">status=online</div></div>
+        <div class="kpi"><div class="t">Критичные (5)</div><div class="v" id="assetKpiCrit" style="color:var(--bad)">—</div><div class="s">criticality=5</div></div>
+        <div class="kpi"><div class="t">Зона DMZ</div><div class="v" id="assetKpiDmz" style="color:var(--warn)">—</div><div class="s">network_zone=dmz</div></div>
+        <div class="kpi"><div class="t">ICS / OT</div><div class="v" id="assetKpiIcs" style="color:var(--accent)">—</div><div class="s">zone=ics</div></div>
+      </div>
+
+      <!-- Type breadcrumbs -->
+      <div style="margin-bottom:14px;display:flex;flex-wrap:wrap;gap:8px;" id="assetTypeChips"></div>
+
+      <!-- Filters -->
+      <div class="card" style="margin-bottom:14px;">
+        <div class="body" style="padding:14px;">
+          <div class="row" style="gap:10px;align-items:center;flex-wrap:wrap;">
+            <input class="tbl-input wide" id="assetSearch" placeholder="&#128269;&#xFE0E;  Поиск: hostname, IP, asset_id, OS..." oninput="renderAssets()" />
+            <select class="tbl-select" id="assetTypeFilter" onchange="renderAssets()">
+              <option value="">Все типы</option>
+              <option value="network_device">Network Device</option>
+              <option value="iam_system">IAM / AD</option>
+              <option value="server">Server</option>
+              <option value="workstation">Workstation</option>
+              <option value="ics_system">ICS / SCADA</option>
+              <option value="security_tool">Security Tool</option>
+            </select>
+            <select class="tbl-select" id="assetZoneFilter" onchange="renderAssets()">
+              <option value="">Все зоны</option>
+              <option value="dmz">DMZ</option>
+              <option value="internal">Internal</option>
+              <option value="ics">ICS / OT</option>
+            </select>
+            <select class="tbl-select" id="assetStatusFilter" onchange="renderAssets()">
+              <option value="">Любой статус</option>
+              <option value="online">Online</option>
+              <option value="offline">Offline</option>
+              <option value="maintenance">Maintenance</option>
+            </select>
+            <button class="tbl-btn" onclick="document.getElementById('assetSearch').value='';document.getElementById('assetTypeFilter').value='';document.getElementById('assetZoneFilter').value='';document.getElementById('assetStatusFilter').value='';renderAssets()">Сброс</button>
+            <span class="muted" id="assetCount" style="margin-left:auto;font-size:12px;"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- CMDB Table -->
       <div class="card">
-        <div class="hdr"><b>Активы (Asset DB)</b></div>
-        <div class="body">
-          <pre class="mono" id="assetJson" style="margin-top:10px; background:#0b1220; color:#e5e7eb; padding:12px; border-radius:14px; overflow:auto; max-height:520px;">loading...</pre>
+        <div class="hdr"><b>CMDB — База активов</b><span id="assetTableSubtitle">loading...</span></div>
+        <div class="body table-scroll" style="padding:0">
+          <table class="tbl-fixed" id="assetTable" style="min-width:1600px;">
+            <thead>
+              <tr>
+                <th style="width:120px;">Asset ID</th>
+                <th style="width:130px;">Тип</th>
+                <th style="width:150px;">Hostname</th>
+                <th style="width:140px;">IP-адреса</th>
+                <th style="width:170px;">ОС / Версия</th>
+                <th style="width:90px;">Зона</th>
+                <th style="width:60px;">Crit</th>
+                <th style="width:100px;">Статус</th>
+                <th style="width:200px;">Сервисы</th>
+                <th style="width:100px;">Отдел</th>
+                <th style="width:160px;">Расположение</th>
+                <th style="width:170px;">Владелец</th>
+              </tr>
+            </thead>
+            <tbody id="assetTableBody"><tr><td colspan="12" class="muted" style="padding:14px;">loading...</td></tr></tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -983,12 +1039,33 @@ HTML = """<!doctype html>
               </tr>
             </thead>
             <tbody id="tblResponseActions"><tr><td colspan="8" class="muted" style="padding:14px;">Загрузка...</td></tr></tbody>
-          </table>
+  </main>
+
+    <!-- PLAYBOOKS -->
+    <section id="sec-playbooks" class="section">
+      <div class="card">
+        <div class="hdr"><b>SOAR Playbooks</b><span>Активные сценарии реагирования</span></div>
+        <div class="body">
+          <div class="table-scroll">
+            <table class="incidents-table tbl-fixed">
+              <thead>
+                <tr>
+                  <th style="width: 60px;">ID</th>
+                  <th style="width: 280px;">Название</th>
+                  <th style="width: 350px;">Описание</th>
+                  <th style="width: 200px;">Условие (Condition)</th>
+                  <th style="width: 200px;">Действие (Actions)</th>
+                  <th style="width: 100px;">Статус</th>
+                </tr>
+              </thead>
+              <tbody id="tblPlaybooks">
+                <tr><td colspan="6" class="muted">Загрузка...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
-
-</div>
 
 <script>
 // ---------------------------
@@ -1040,6 +1117,125 @@ function statusBadge(val){
   if(s.includes('closed')) return '<span class="badge ok">CLOSED</span>';
   return '<span class="badge">' + esc(val || '—') + '</span>';
 }
+
+function assetStatusBadge(val){
+  const s = (val || '').toString().toLowerCase();
+  if(s === 'online') return '<span class="badge ok">✅ ONLINE</span>';
+  if(s === 'offline') return '<span class="badge bad">❌ OFFLINE</span>';
+  if(s === 'maintenance') return '<span class="badge warn">🔧 MAINT</span>';
+  return '<span class="badge">' + esc(val || '—') + '</span>';
+}
+
+function assetTypeIcon(val){
+  const s = (val || '').toString().toLowerCase();
+  if(s === 'network_device') return '🌐 ' + esc(val);
+  if(s === 'iam_system') return '🔑 ' + esc(val);
+  if(s === 'server') return '🖥 ' + esc(val);
+  if(s === 'workstation') return '💻 ' + esc(val);
+  if(s === 'ics_system') return '⚙️ ' + esc(val);
+  if(s === 'security_tool') return '🛡 ' + esc(val);
+  return '📦 ' + esc(val || 'unknown');
+}
+
+function renderAssets(){
+  const data = window._assetData || [];
+  
+  // Update KPIs
+  const total = data.length;
+  const online = data.filter(a => a.status === 'online').length;
+  const crit = data.filter(a => String(a.criticality) === '5').length;
+  const dmz = data.filter(a => a.network_zone === 'dmz' || a.zone === 'dmz').length;
+  const ics = data.filter(a => a.network_zone === 'ics' || a.zone === 'ics').length;
+  
+  document.getElementById('assetKpiTotal').textContent = total;
+  document.getElementById('assetKpiOnline').textContent = online;
+  document.getElementById('assetKpiCrit').textContent = crit;
+  document.getElementById('assetKpiDmz').textContent = dmz;
+  document.getElementById('assetKpiIcs').textContent = ics;
+
+  // Filter values
+  const searchEl = document.getElementById('assetSearch');
+  const typeFilt = document.getElementById('assetTypeFilter');
+  const zoneFilt = document.getElementById('assetZoneFilter');
+  const statusFilt = document.getElementById('assetStatusFilter');
+  
+  if (!searchEl || !typeFilt || !zoneFilt || !statusFilt) return;
+
+  const q = (searchEl.value || '').toLowerCase();
+  const tFilt = typeFilt.value;
+  const zFilt = zoneFilt.value;
+  const sFilt = statusFilt.value;
+
+  // Type Breadcrumbs Calculation
+  const typesCount = {};
+  data.forEach(a => {
+    const t = a.asset_type || 'unknown';
+    typesCount[t] = (typesCount[t] || 0) + 1;
+  });
+  const chipsEl = document.getElementById('assetTypeChips');
+  if(chipsEl){
+    chipsEl.innerHTML = Object.entries(typesCount)
+      .sort((a,b)=>b[1]-a[1])
+      .map(([k,v]) => `<span class="badge" style="cursor:pointer;" onclick="document.getElementById('assetTypeFilter').value='${k}';renderAssets()">${assetTypeIcon(k)}: ${v}</span>`)
+      .join('');
+  }
+
+  // Filtering
+  let filtered = data.filter(a => {
+    if(tFilt && (a.asset_type || 'unknown') !== tFilt) return false;
+    const zn = a.network_zone || a.zone || 'unknown';
+    if(zFilt && zn !== zFilt) return false;
+    if(sFilt && (a.status || 'unknown') !== sFilt) return false;
+    if(q){
+      const text = `${a.hostname||''} ${a.name||''} ${a.asset_id||''} ${(a.ips||[]).join(' ')} ${a.os||''}`.toLowerCase();
+      if(!text.includes(q)) return false;
+    }
+    return true;
+  });
+
+  // Sort by criticality DESC 
+  filtered.sort((a,b) => (parseInt(b.criticality)||0) - (parseInt(a.criticality)||0));
+
+  document.getElementById('assetCount').textContent = `Показано: ${filtered.length} из ${total}`;
+
+  const tb = document.getElementById('assetTableBody');
+  if(!tb) return;
+  tb.innerHTML = '';
+  if(filtered.length === 0){
+    tb.innerHTML = '<tr><td colspan="12" class="muted" style="padding:14px;text-align:center;">Активы не найдены</td></tr>';
+    return;
+  }
+
+  for(const a of filtered){
+    const tr = document.createElement('tr');
+    
+    // Determine severity for badge displaying
+    let cBadge = 'low';
+    if(a.criticality == 5) cBadge = 'critical';
+    else if(a.criticality >= 3) cBadge = 'medium';
+    
+    tr.innerHTML = `
+      <td class="mono"><b>${esc(a.asset_id)}</b></td>
+      <td>${assetTypeIcon(a.asset_type)}</td>
+      <td class="mono" style="font-weight:600;">${esc(a.hostname)}</td>
+      <td class="mono"><div style="display:flex;flex-direction:column;gap:4px;">${(a.ips||[]).map(ip => `<span>${esc(ip)}</span>`).join('')}</div></td>
+      <td>${esc(a.os)} <div class="subcell">${esc(a.os_version)}</div></td>
+      <td class="mono muted">${esc(a.network_zone || a.zone)}</td>
+      <td>${sevBadge(cBadge)}</td>
+      <td>${assetStatusBadge(a.status)}</td>
+      <td>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;">
+          ${(a.services||[]).map(s => `<span class="badge" style="font-size:10px;padding:2px 6px;">${esc(s)}</span>`).join('')}
+        </div>
+      </td>
+      <td class="muted">${esc(a.department)}</td>
+      <td class="muted" style="font-size:11px;">${esc(a.location)}</td>
+      <td class="mono muted" style="font-size:11px;">${esc(a.owner)}</td>
+    `;
+    tb.appendChild(tr);
+  }
+}
+
 
 const openDetails = new Set();
 
@@ -1412,6 +1608,7 @@ const ROUTES = [
   {id:'metrics', title:'Метрики'},
   {id:'simulation', title:'Симулятор атак'},
   {id:'response', title:'Активное реагирование'},
+  {id:'playbooks', title:'Автоматизация (SOAR)'},
 ];
 
 function setRoute(routeId){
@@ -1747,9 +1944,16 @@ async function refresh(){
   const ev = await safeJson('/api/events?limit=50');
   document.getElementById('rawJson').textContent = ev ? JSON.stringify(ev, null, 2) : 'N/A (endpoint /api/events не найден)';
 
-  // Asset DB (CMDB)
-  const asset = await safeJson('/api/assets');
-  document.getElementById('assetJson').textContent = asset ? JSON.stringify(asset, null, 2) : 'Asset DB недоступна';
+  // Asset DB (CMDB) — loaded lazily, rendered by renderAssets()
+  window._assetData = null;
+  const assetResp = await safeJson('/api/assets');
+  if(assetResp && Array.isArray(assetResp.items)){
+    window._assetData = assetResp.items;
+    renderAssets();
+  } else {
+    const tb = document.getElementById('assetTableBody');
+    if(tb) tb.innerHTML = '<tr><td colspan="12" class="muted" style="padding:14px;">Asset DB недоступна</td></tr>';
+  }
 
   // Charts
   renderCharts(alerts, incidents);
@@ -1820,7 +2024,77 @@ async function refresh(){
     document.getElementById('kpiSys').textContent = 'OK';
     document.getElementById('kpiSysS').textContent = 'normal';
   }
+
+  // Auto-refresh Response tab if active
+  const secResponse = document.getElementById('sec-response');
+  if (secResponse && secResponse.classList.contains('active')) {
+    loadResponseData();
+  }
 }
+
+// ---------------------------
+// SOAR Playbooks
+// ---------------------------
+async function loadPlaybooks(){
+  const resp = await safeJson('/api/playbooks/');
+  const items = resp ? (resp.items || resp.playbooks || []) : [];
+  const tb = document.getElementById('tblPlaybooks');
+  if(!tb) return;
+  tb.innerHTML = '';
+  if(items.length === 0){
+    tb.innerHTML = '<tr><td colspan="6" class="muted" style="padding:14px">Нет плейбуков</td></tr>';
+    return;
+  }
+  
+  for(const pb of items){
+    const row = document.createElement('tr');
+    
+    // Форматирование условий
+    const cond = pb.condition || {};
+    let condHtml = '';
+    if(cond.type_in && cond.type_in.length) condHtml += `<div class="mono muted">Types: ${cond.type_in.join(', ')}</div>`;
+    if(cond.severity_in && cond.severity_in.length) condHtml += `<div class="subcell">Sev: ${cond.severity_in.join(', ')}</div>`;
+    
+    // Форматирование действий
+    const acts = pb.actions || [];
+    const actsHtml = acts.map(a => `<div class="mono" style="color:var(--accent)">${a.type} -> ${a.target_field}</div>`).join('');
+    
+    // Переключатель статуса
+    const checked = pb.enabled ? 'checked' : '';
+    const statusHtml = `
+      <label style="display:flex;align-items:center;cursor:pointer;gap:8px;">
+        <input type="checkbox" onchange="togglePlaybook('${esc(pb.id)}', this.checked)" ${checked}> 
+        <span style="font-weight:600; color:${pb.enabled ? 'var(--good)' : 'var(--muted)'}">${pb.enabled ? 'Active' : 'Disabled'}</span>
+      </label>
+    `;
+    
+    row.innerHTML = `
+      <td class="mono muted">${esc(pb.id)}</td>
+      <td style="font-weight:600">${esc(pb.name)}</td>
+      <td>${esc(pb.description || '')}</td>
+      <td>${condHtml}</td>
+      <td>${actsHtml}</td>
+      <td>${statusHtml}</td>
+    `;
+    tb.appendChild(row);
+  }
+}
+
+window.togglePlaybook = async function(id, state){
+  try{
+    const r = await fetch('/api/playbooks/' + encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({enabled: state})
+    });
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    setStatus('Playbook updated', 'ok');
+    loadPlaybooks();
+  }catch(e){
+    setStatus('Failed to update playbook', 'bad');
+    loadPlaybooks(); // revert visually
+  }
+};
 
 // ---------------------------
 // Active Response functions
@@ -1981,7 +2255,7 @@ async function resetData(){
 // Correlation Graph (SVG) - Refined Node-based Design
 // ---------------------------
 function renderCorrelationGraph() {
-  const container = document.getElementById('correlationGraph');
+  return;
   if (!container) return;
   
   const w = container.clientWidth;

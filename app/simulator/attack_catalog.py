@@ -4,6 +4,26 @@ from typing import Dict, List, Tuple
 # (payload, delay_after_seconds)
 AttackSeq = List[Tuple[Dict, float]]
 
+# ─── Real CMDB hostnames (synced with assets.json) ──────────────────────────
+# iam_system:   dc-01 (10.0.1.10), dc-02 (10.0.1.11)
+# network_device: fw-perimeter-01 (10.0.0.1), vpn-gw-01 (10.0.0.5/172.16.0.1)
+# workstation:  ws-eng-01 (10.1.1.50), ws-admin-01 (10.0.0.20),
+#               ws-user-01..ws-user-05 (10.1.2.10-14)
+# server:       fileserver-01 (10.0.2.10), webportal-01 (10.0.3.10)
+# ics_system:   scada-srv-01 (10.10.1.10), scada-historian (10.10.1.11)
+# security_tool: edr-console-01 (10.0.4.10), siem-srv-01 (10.0.4.20)
+
+DC_HOST        = "dc-01"
+DC_IP          = "10.0.1.10"
+FW_IP          = "10.0.0.1"
+VPN_GW_IP      = "10.0.0.5"
+WORKSTATIONS   = ["ws-user-01", "ws-user-02", "ws-user-03", "ws-user-04", "ws-user-05"]
+WS_ENG         = "ws-eng-01"
+WS_ADMIN       = "ws-admin-01"
+WS_IPS         = ["10.1.2.10", "10.1.2.11", "10.1.2.12", "10.1.2.13", "10.1.2.14"]
+WS_ENG_IP      = "10.1.1.50"
+WS_ADMIN_IP    = "10.0.0.20"
+
 def _nowz() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -15,7 +35,7 @@ def vpn_bruteforce() -> AttackSeq:
         seq.append(({
             "source_type": "firewall",
             "format": "cef",
-            "data": f"CEF:0|NGFW|Vendor|1.0|100|VPN_LOGIN_FAIL|8|src={src} dst=10.0.0.1 suser={user}",
+            "data": f"CEF:0|NGFW|Vendor|1.0|100|VPN_LOGIN_FAIL|8|src={src} dst={VPN_GW_IP} suser={user}",
         }, 0.25))
     return seq
 
@@ -26,7 +46,7 @@ def vpn_compromise() -> AttackSeq:
     seq.append(({
         "source_type": "firewall",
         "format": "cef",
-        "data": f"CEF:0|NGFW|Vendor|1.0|100|VPN_LOGIN_SUCCESS|5|src={src} dst=10.0.0.1 suser={user}",
+        "data": f"CEF:0|NGFW|Vendor|1.0|100|VPN_LOGIN_SUCCESS|5|src={src} dst={VPN_GW_IP} suser={user}",
     }, 0.1))
     return seq
 
@@ -38,29 +58,30 @@ def portscan() -> AttackSeq:
         seq.append(({
             "source_type": "firewall",
             "format": "cef",
-            "data": f"CEF:0|NGFW|Vendor|1.0|101|PORTSCAN|6|src={src} dst=10.0.0.1 dpt={p}",
+            "data": f"CEF:0|NGFW|Vendor|1.0|101|PORTSCAN|6|src={src} dst={FW_IP} dpt={p}",
         }, 0.12))
     return seq
 
 def lateral() -> AttackSeq:
     user = "user1"
-    hosts = ["pc1", "pc2", "pc3", "pc4"]
+    hosts = WORKSTATIONS[:4]
     nowz = _nowz()
     seq: AttackSeq = []
-    for h in hosts:
+    for i, h in enumerate(hosts):
+        ip = WS_IPS[i]
         seq.append(({
             "source_type": "iam",
             "format": "csv",
-            "data": f"{nowz},{user},LOGIN_SUCCESS,host={h},ip=10.0.0.9",
+            "data": f"{nowz},{user},LOGIN_SUCCESS,host={h},ip={ip}",
         }, 0.2))
     return seq
 
 
-# IAM/AD and Endpoints attacks
+# IAM/AD attacks
 def iam_password_spray() -> AttackSeq:
     """Multiple auth failures from one src IP across several users."""
     src_ip = "10.0.0.9"
-    host = "dc1"
+    host = DC_HOST
     users = ["user1", "user2", "user3", "user4", "admin"]
     seq: AttackSeq = []
     for u in users:
@@ -78,7 +99,7 @@ def iam_password_spray() -> AttackSeq:
 def iam_auth_success() -> AttackSeq:
     """A successful authentication event (useful for chains)."""
     src_ip = "10.0.0.9"
-    host = "dc1"
+    host = DC_HOST
     user = "user1"
     return [({
         "source_type": "iam",
@@ -91,8 +112,8 @@ def iam_auth_success() -> AttackSeq:
 
 
 def iam_admin_group_change() -> AttackSeq:
-    """Privilege escalation style event: add a user to Domain Admins."""
-    host = "dc1"
+    """Privilege escalation: add user to Domain Admins."""
+    host = DC_HOST
     actor = "admin"
     target = "user1"
     return [({
@@ -105,9 +126,10 @@ def iam_admin_group_change() -> AttackSeq:
     }, 0.10)]
 
 
+# Endpoint attacks
 def endpoint_login_fail() -> AttackSeq:
-    """Endpoint OS auth failures (e.g., RDP brute)"""
-    host = "pc5"
+    """Endpoint OS auth failures (RDP brute on engineering workstation)."""
+    host = WS_ENG
     user = "user1"
     src_ip = "10.0.0.9"
     seq: AttackSeq = []
@@ -124,8 +146,8 @@ def endpoint_login_fail() -> AttackSeq:
 
 
 def endpoint_powershell_encoded() -> AttackSeq:
-    """Endpoint suspicious process start (PowerShell -enc)."""
-    host = "pc5"
+    """Endpoint suspicious process start (PowerShell -enc) on admin workstation."""
+    host = WS_ADMIN
     user = "user1"
     return [({
         "source_type": "endpoints",
@@ -138,10 +160,10 @@ def endpoint_powershell_encoded() -> AttackSeq:
 
 
 def endpoint_service_create() -> AttackSeq:
-    """Endpoint remote service creation (often lateral movement indicator)."""
-    host = "pc4"
+    """Endpoint remote service creation (lateral movement indicator)."""
+    host = WORKSTATIONS[3]   # ws-user-04
     user = "user1"
-    src_host = "pc2"
+    src_host = WORKSTATIONS[1]  # ws-user-02
     return [({
         "source_type": "endpoints",
         "format": "cef",
@@ -152,7 +174,7 @@ def endpoint_service_create() -> AttackSeq:
     }, 0.10)]
 
 def malware() -> AttackSeq:
-    host = "pc7"
+    host = WS_ENG
     return [({
         "source_type": "av",
         "format": "cef",
@@ -160,7 +182,7 @@ def malware() -> AttackSeq:
     }, 0.1)]
 
 def av_disabled() -> AttackSeq:
-    host = "pc7"
+    host = WS_ADMIN
     user = "user1"
     return [({
         "source_type": "av",
@@ -170,7 +192,7 @@ def av_disabled() -> AttackSeq:
 
 
 def av_clean_fail() -> AttackSeq:
-    host = "pc7"
+    host = WORKSTATIONS[2]  # ws-user-03
     return [({
         "source_type": "av",
         "format": "cef",
@@ -179,7 +201,7 @@ def av_clean_fail() -> AttackSeq:
 
 
 def av_quarantine() -> AttackSeq:
-    host = "pc7"
+    host = WORKSTATIONS[4]  # ws-user-05
     return [({
         "source_type": "av",
         "format": "cef",
@@ -188,7 +210,7 @@ def av_quarantine() -> AttackSeq:
 
 
 def edr_suspicious_process() -> AttackSeq:
-    host = "pc3"
+    host = WORKSTATIONS[2]  # ws-user-03
     user = "user1"
     return [({
         "source_type": "edr",
@@ -201,7 +223,7 @@ def edr_suspicious_process() -> AttackSeq:
 
 
 def edr_credential_dump() -> AttackSeq:
-    host = "pc2"
+    host = WORKSTATIONS[1]  # ws-user-02
     user = "user1"
     return [({
         "source_type": "edr",
@@ -214,8 +236,8 @@ def edr_credential_dump() -> AttackSeq:
 
 
 def edr_lateral_tool() -> AttackSeq:
-    src_host = "pc2"
-    dst_host = "pc4"
+    src_host = WORKSTATIONS[1]  # ws-user-02
+    dst_host = WORKSTATIONS[3]  # ws-user-04
     user = "user1"
     seq: AttackSeq = []
     seq.append(({
@@ -238,10 +260,9 @@ def edr_lateral_tool() -> AttackSeq:
 
 
 def edr_ransomware_behavior() -> AttackSeq:
-    host = "pc7"
+    host = WS_ENG
     user = "user1"
     seq: AttackSeq = []
-    # burst of file modifications typical for ransomware
     for i in range(8):
         seq.append(({
             "source_type": "edr",

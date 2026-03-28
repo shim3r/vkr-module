@@ -126,7 +126,28 @@ def compute_metrics() -> Dict[str, Any]:
     top_users = _top_by(events_sample, "user", limit=10)
     top_assets = _top_by(events_sample, "asset_id", limit=10)
 
-    assets_count = len(_load_assets())
+    all_assets = _load_assets()
+    assets_count = len(all_assets)
+
+    # CMDB breakdowns
+    assets_by_type: Dict[str, int] = {}
+    assets_by_status: Dict[str, int] = {}
+    assets_by_criticality: Dict[str, int] = {}
+    assets_by_zone: Dict[str, int] = {}
+    for a in all_assets:
+        if not isinstance(a, dict):
+            continue
+        atype = str(a.get("asset_type") or "unknown")
+        assets_by_type[atype] = assets_by_type.get(atype, 0) + 1
+        status = str(a.get("status") or "unknown")
+        assets_by_status[status] = assets_by_status.get(status, 0) + 1
+        try:
+            crit = str(int(a.get("criticality") or 0))
+        except Exception:
+            crit = "unknown"
+        assets_by_criticality[crit] = assets_by_criticality.get(crit, 0) + 1
+        zone = str(a.get("network_zone") or a.get("zone") or "unknown")
+        assets_by_zone[zone] = assets_by_zone.get(zone, 0) + 1
 
     return {
         "events_raw": events_raw,
@@ -148,6 +169,10 @@ def compute_metrics() -> Dict[str, Any]:
         },
         "cmdb": {
             "assets_count": assets_count,
+            "by_type": assets_by_type,
+            "by_status": assets_by_status,
+            "by_criticality": assets_by_criticality,
+            "by_zone": assets_by_zone,
             "paths": [str(p) for p in ASSETS_PATHS],
         },
     }
