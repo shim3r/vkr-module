@@ -2,25 +2,20 @@ from __future__ import annotations
 
 from typing import Any, Dict, Tuple
 
-# Source criticality weights (scale 1-10) per TO-BE architecture
-SOURCE_CRITICALITY = {
-    "firewall": 10,
-    "av": 8,
-    "edr": 6,
-    "iam": 5,
-    "arm": 4,
+# Source trust coefficients for calculating Risk Score
+SOURCE_TRUST = {
+    "firewall": 2.0,
+    "av": 1.5,
+    "edr": 1.5,
+    "iam": 1.0,
+    "arm": 0.5,
 }
 
-# Weighted formula coefficients
-W_SOURCE = 0.4
-W_ASSET = 0.3
-W_SEVERITY = 0.3
 
-
-def _get_source_criticality(source_type: str) -> float:
-    """Return source criticality on scale 1-10."""
+def _get_source_trust(source_type: str) -> float:
+    """Return source trust coefficient (0.5 to 2.0)."""
     src = (source_type or "unknown").lower()
-    return float(SOURCE_CRITICALITY.get(src, 3))
+    return float(SOURCE_TRUST.get(src, 1.0))
 
 
 def _get_asset_criticality(payload: Dict[str, Any]) -> float:
@@ -38,15 +33,15 @@ def _get_asset_criticality(payload: Dict[str, Any]) -> float:
                 break
 
     if crit is None:
-        return 2.0  # default low criticality
+        return 1.0  # default low criticality
 
     try:
         c = int(crit)
     except Exception:
-        return 2.0
+        return 1.0
 
     c = max(1, min(5, c))
-    return float(c * 2)  # normalize 1-5 -> 2-10
+    return float(c)  # return 1-5 unmodified
 
 
 def _get_event_severity(payload: Dict[str, Any]) -> float:
@@ -59,32 +54,35 @@ def _get_event_severity(payload: Dict[str, Any]) -> float:
 
 
 def score(payload: Dict[str, Any]) -> Tuple[float, str, bool]:
-    """Compute risk score using the TO-BE weighted formula.
+    """Compute risk score (0-100) for noise reduction.
 
-    risk = (source_criticality * 0.4) + (asset_criticality * 0.3) + (event_severity * 0.3)
-
-    Scale: 1.0 - 10.0
+    Формула: Risk = (Criticality Актива) * (Severity Атаки) * (Доверие Источника)
+    
+    Max Risk: 5 * 10 * 2.0 = 100.
+    
+    Шкалы:
+    - Asset Criticality: 1..5
+    - Event Severity: 1..10
+    - Source Trust: 0.5..2.0
 
     Thresholds:
-      > 8.5 -> CRITICAL
-      > 7.0 -> HIGH
-      > 4.0 -> MEDIUM
-      <= 4.0 -> LOW
-
-    Returns (risk_score, priority, is_critical).
+      > 70 -> CRITICAL
+      > 40 -> HIGH
+      > 20 -> MEDIUM
+      <= 20 -> LOW
     """
-    source_crit = _get_source_criticality(payload.get("source_type", ""))
+    trust_coeff = _get_source_trust(payload.get("source_type", ""))
     asset_crit = _get_asset_criticality(payload)
     event_sev = _get_event_severity(payload)
 
-    risk = (source_crit * W_SOURCE) + (asset_crit * W_ASSET) + (event_sev * W_SEVERITY)
-    risk = round(risk, 2)
+    risk = asset_crit * event_sev * trust_coeff
+    risk = round(min(100.0, risk), 2)
 
-    if risk > 8.5:
+    if risk > 70.0:
         priority = "CRITICAL"
-    elif risk > 7.0:
+    elif risk > 40.0:
         priority = "HIGH"
-    elif risk > 4.0:
+    elif risk > 20.0:
         priority = "MEDIUM"
     else:
         priority = "LOW"

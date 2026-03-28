@@ -837,6 +837,98 @@ def correlate_vpn_brute_success_process(window_seconds: int = 300, fail_threshol
 
     return False, {}
 
+# -------------------------------------------------
+# 6) SCADA Kill Chain (VPN -> Lateral -> PLC Payload)
+# -------------------------------------------------
+
+def correlate_scada_killchain(window_seconds: int = 600) -> Tuple[bool, Dict]:
+    """
+    Looks for a targeted attack on ICS:
+    1. VPN_LOGIN_SUCCESS (External)
+    2. IAM_AUTH_SUCCESS / ENDPOINT_LOGIN_SUCCESS (Lateral inside)
+    3. SCADA_PLC_PAYLOAD or MODBUS_PORT_SCAN (Action on SCADA)
+    """
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(seconds=window_seconds)
+    events = all_events()
+
+    vpn_events = []
+    lateral_events = []
+    scada_events = []
+
+    for e in events:
+        ra_dt = _to_dt(e.get("received_at"))
+        if ra_dt is None or ra_dt < window_start:
+            continue
+        
+        et1 = str(e.get("event_type") or "")
+        et2 = str((e.get("fields") or {}).get("event_type") or "")
+        et = (et1 if et1 and et1 != "UNKNOWN" else et2).upper()
+        
+        if et == "VPN_LOGIN_SUCCESS":
+            vpn_events.append(e)
+        elif et in ("IAM_AUTH_SUCCESS", "ENDPOINT_LOGIN_SUCCESS"):
+            lateral_events.append(e)
+        elif et in ("SCADA_PLC_PAYLOAD", "MODBUS_PORT_SCAN"):
+            scada_events.append(e)
+
+    if not vpn_events or not lateral_events or not scada_events:
+        return False, {}
+
+    # Find the chain
+    for v in vpn_events:
+        user = v.get("user") or (v.get("fields") or {}).get("suser")
+        if not user:
+            continue
+            
+        lat_candidates = [
+            l for l in lateral_events 
+            if (l.get("user") or (l.get("fields") or {}).get("suser")) == user 
+            and _to_dt(l["received_at"]) >= _to_dt(v["received_at"])
+        ]
+        
+        if not lat_candidates:
+            continue
+            
+        for lat in lat_candidates:
+            dst_host = lat.get("host") or (lat.get("fields") or {}).get("host")
+            
+            scada_candidates = [
+                s for s in scada_events 
+                if ((s.get("user") or (s.get("fields") or {}).get("suser")) == user 
+                    or s.get("src_ip") == dst_host 
+                    or (s.get("fields") or {}).get("src") == dst_host)
+                and _to_dt(s["received_at"]) >= _to_dt(lat["received_at"])
+            ]
+            
+            if scada_candidates:
+                scada = scada_candidates[-1]
+                key = f"SCADA_KILLCHAIN:{user}:{window_seconds}"
+                if _seen(key):
+                    return False, {}
+
+                chain = [v, lat, scada]
+                incident = {
+                    "type": "SCADA_KILLCHAIN",
+                    "title": f"Целевая атака на ТЭК: Взлом VPN -> Движение к {dst_host} -> Атака на ПЛК!",
+                    "user": user,
+                    "host": scada.get("dst_ip") or "scada-srv-01",
+                    "src_ip": v.get("src_ip") or (v.get("fields") or {}).get("src"),
+                    "count": 3,
+                    "window_seconds": window_seconds,
+                    "first_seen": min(_to_dt(c["received_at"]) for c in chain if _to_dt(c.get("received_at"))).isoformat(),
+                    "last_seen": max(_to_dt(c["received_at"]) for c in chain if _to_dt(c.get("received_at"))).isoformat(),
+                    "severity": "critical",
+                    "priority": "critical",
+                    "risk": 100,
+                    "asset_id": "scada-srv-01",
+                    "asset_zone": "ICS",
+                    "evidence_event_ids": [c.get("event_id") for c in chain if c.get("event_id")],
+                }
+                return True, incident
+                
+    return False, {}
+
 
 # -------------------------------------------------
 # 6) Chain: AV Detect -> EDR Suspicious Process (cross-source correlation)
@@ -1135,6 +1227,19 @@ def run_correlation() -> List[Dict]:
         )
 
     # --- Multi-stage chain scenarios (TO-BE requirements) ---
+
+    found, inc = correlate_scada_killchain()
+    if found:
+        incidents.append(inc)
+        _store_incident_and_alert(
+            inc,
+            priority="critical",
+            risk=100,
+            src_ip=inc.get("src_ip", ""),
+            dst_ip=inc.get("host", ""), # scada host
+            user=inc.get("user", ""),
+        )
+
 
     found, inc = correlate_vpn_brute_success_process()
     if found:

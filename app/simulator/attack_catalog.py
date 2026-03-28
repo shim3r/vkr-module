@@ -274,6 +274,42 @@ def edr_ransomware_behavior() -> AttackSeq:
         }, 0.10))
     return seq
 
+
+def scada_killchain() -> AttackSeq:
+    """Targeted attack on ICS/SCADA (Multi-stage).
+    1. VPN compromise
+    2. Lateral movement via RDP/SSH to an internal Eng station
+    3. PLC Payload / MODBUS Scan on scada-srv-01
+    """
+    seq: AttackSeq = []
+    
+    # 1. VPN Success from external IP
+    src_ip = "185.20.10.99"
+    user = "remote_admin"
+    seq.append(({
+        "source_type": "firewall",
+        "format": "cef",
+        "data": f"CEF:0|NGFW|Vendor|1.0|100|VPN_LOGIN_SUCCESS|5|src={src_ip} dst={VPN_GW_IP} suser={user}",
+    }, 1.0))
+    
+    # 2. RDP (Lateral) to Eng Station
+    host = WS_ENG
+    seq.append(({
+        "source_type": "iam",
+        "format": "cef",
+        "data": f"CEF:0|IAM|AD|1.0|401|IAM_AUTH_SUCCESS|4|host={host} suser={user} src={src_ip} outcome=success auth=rdp",
+    }, 1.0))
+    
+    # 3. PLC Payload to scada-srv-01
+    scada_ip = "10.10.1.10"
+    seq.append(({
+        "source_type": "ids",
+        "format": "cef",
+        "data": f"CEF:0|ICS_IDS|Vendor|1.0|601|SCADA_PLC_PAYLOAD|9|src={WS_ENG_IP} dst={scada_ip} suser={user} msg=Unauthorized PLC logic update",
+    }, 0.5))
+    
+    return seq
+
 ATTACKS = {
     "vpn_bruteforce": vpn_bruteforce,
     "vpn_compromise": vpn_compromise,
@@ -296,9 +332,11 @@ ATTACKS = {
     "av_clean_fail": av_clean_fail,
     "av_disabled": av_disabled,
 
-    # EDR
     "edr_suspicious_process": edr_suspicious_process,
     "edr_credential_dump": edr_credential_dump,
     "edr_lateral_tool": edr_lateral_tool,
     "edr_ransomware": edr_ransomware_behavior,
+    
+    # Industrial / SCADA
+    "scada_killchain": scada_killchain,
 }

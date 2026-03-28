@@ -1763,7 +1763,10 @@ function renderIncidentsTables(items){
       <td class="mono muted">${esc(asset)}</td>
       <td>
         <div style="font-weight:600;margin-bottom:10px;margin-left:6px;">${esc(title)}</div>
-        <button class="tbl-btn" style="width:100%; margin-top:8px;" onclick="toggleDetails('${esc(id)}')">Показать историю корреляции (Related Events)</button>
+        <div style="display:flex; gap:8px;">
+          <button class="tbl-btn" style="flex:1; margin-top:8px;" onclick="toggleDetails('${esc(id)}')">Показать историю корреляции (Related Events)</button>
+          <button class="tbl-btn" style="flex:0.5; margin-top:8px; background:rgba(16,185,129,0.1); border-color:rgba(16,185,129,0.3); color:var(--good);" onclick="exportGossopka('${esc(id)}')">ГосСОПКА ГОСТ</button>
+        </div>
         <div id="details-${esc(id)}" class="related-events-box" style="display:${openDetails.has(id) ? 'block' : 'none'}; margin-top:10px; padding:15px; background:var(--bg); border:1px solid var(--border); border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,0.2);">
           ${renderRelatedEvents(it.related_events, it)}
         </div>
@@ -1812,6 +1815,26 @@ function renderIncidentsTables(items){
   // auto-grow comments so rows expand downward (no overlap with Save)
   attachAutoGrow(full);
 }
+
+window.exportGossopka = async function(id) {
+  try {
+    const r = await fetch('/api/gossopka/' + encodeURIComponent(id));
+    if (!r.ok) {
+        setStatus('Ошибка экспорта ГосСОПКА (' + r.status + ')', 'bad');
+        return;
+    }
+    const data = await r.json();
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
+    const link = document.createElement("a");
+    link.href = window.URL.createObjectURL(blob);
+    link.download = `gossopka_report_${id}.json`;
+    link.click();
+    setStatus('Отчет ГосСОПКА выгружен', 'ok');
+  } catch(e) {
+    setStatus('Ошибка скачивания отчета', 'bad');
+  }
+};
+
 
 function renderCharts(alerts, incidents){
   // Alerts over time: bucket by minute label
