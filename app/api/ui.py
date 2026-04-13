@@ -562,6 +562,224 @@ HTML = """<!doctype html>
     .note{ font-size: 12px; color: var(--muted); }
     .note li{ margin-bottom: 4px; }
 
+    /* ===== SOAR Playbooks Styles ===== */
+    .soar-kpis{ display:grid; gap:12px; grid-template-columns: repeat(4, 1fr); margin-bottom:14px; }
+    @media (max-width:980px){ .soar-kpis{ grid-template-columns: 1fr 1fr; } }
+
+    .soar-toolbar{
+      display:flex; align-items:center; justify-content:space-between;
+      flex-wrap:wrap; gap:10px; margin-bottom:14px;
+    }
+    .soar-toolbar .search-box{
+      flex:1; min-width:200px; max-width:400px;
+      padding:10px 16px; border-radius:var(--radius-sm);
+      border:1px solid var(--border); background:var(--panel);
+      color:var(--text); font-size:13px; outline:none;
+    }
+    .soar-toolbar .search-box:focus{ border-color:var(--accent); }
+
+    .btn-create{
+      padding:10px 24px; border-radius:999px;
+      background:linear-gradient(135deg, #2563eb, #3b82f6);
+      color:#fff; border:none; font-weight:700; font-size:14px;
+      cursor:pointer; box-shadow:0 4px 20px rgba(37,99,235,0.3);
+      transition:all 0.2s ease; display:inline-flex; align-items:center; gap:8px;
+    }
+    .btn-create:hover{ transform:translateY(-2px); box-shadow:0 8px 30px rgba(37,99,235,0.4); }
+    .btn-create:active{ transform:translateY(0); }
+
+    .pb-grid{ display:grid; gap:14px; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
+
+    .pb-card{
+      background:var(--panel); border:1px solid var(--border);
+      border-radius:var(--radius); box-shadow:var(--shadow);
+      overflow:hidden; transition:all 0.3s ease;
+      position:relative;
+    }
+    .pb-card:hover{ border-color:var(--accent); transform:translateY(-2px); }
+    .pb-card.disabled{ opacity:0.55; }
+    .pb-card .pb-header{
+      padding:18px 20px; display:flex; align-items:center;
+      justify-content:space-between; gap:10px;
+      border-bottom:1px solid var(--border); background:var(--panel2);
+    }
+    .pb-card .pb-header .pb-title{
+      font-weight:700; font-size:15px; color:var(--text);
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    }
+    .pb-card .pb-header .pb-id{
+      font-family:var(--mono); font-size:11px; color:var(--muted); margin-top:2px;
+    }
+    .pb-card .pb-body{ padding:18px 20px; }
+    .pb-card .pb-desc{
+      color:var(--muted); font-size:12px; line-height:1.5; margin-bottom:14px;
+      display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+    }
+
+    .pb-flow{
+      display:flex; align-items:center; gap:8px;
+      padding:12px; background:rgba(0,0,0,0.15);
+      border-radius:var(--radius-sm); margin-bottom:14px;
+    }
+    .pb-flow-col{ flex:1; min-width:0; }
+    .pb-flow-label{ font-size:10px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px; }
+    .pb-flow-arrow{
+      color:var(--accent); font-size:18px; font-weight:900;
+      flex-shrink:0; padding:0 4px;
+    }
+    .pb-flow .pb-chip{
+      display:inline-block; padding:3px 8px; border-radius:6px;
+      font-size:10px; font-weight:700; font-family:var(--mono);
+      margin:2px; white-space:nowrap;
+    }
+    .pb-chip.cond-type{ background:rgba(99,102,241,0.15); color:rgb(129,140,248); border:1px solid rgba(99,102,241,0.25); }
+    .pb-chip.cond-sev{ background:rgba(245,158,11,0.12); color:var(--warn); border:1px solid rgba(245,158,11,0.25); }
+    .pb-chip.act-block{ background:rgba(239,68,68,0.12); color:var(--bad); border:1px solid rgba(239,68,68,0.25); }
+    .pb-chip.act-isolate{ background:rgba(245,158,11,0.12); color:var(--warn); border:1px solid rgba(245,158,11,0.25); }
+    .pb-chip.act-disable{ background:rgba(56,139,253,0.12); color:var(--accent); border:1px solid rgba(56,139,253,0.25); }
+
+    .pb-footer{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:0 20px 16px; gap:8px;
+    }
+    .pb-actions{ display:flex; gap:6px; }
+    .pb-actions button{
+      padding:6px 14px; border-radius:8px; font-size:12px; font-weight:600;
+      cursor:pointer; border:1px solid var(--border); background:var(--panel2);
+      color:var(--text2); transition:all 0.15s ease;
+    }
+    .pb-actions button:hover{ background:var(--accent2); border-color:var(--accent); color:var(--accent); }
+    .pb-actions button.del:hover{ background:rgba(239,68,68,0.12); border-color:rgba(239,68,68,0.4); color:var(--bad); }
+
+    /* Toggle switch */
+    .toggle-switch{
+      position:relative; width:44px; height:24px; flex-shrink:0;
+    }
+    .toggle-switch input{ opacity:0; width:0; height:0; }
+    .toggle-slider{
+      position:absolute; cursor:pointer; inset:0;
+      background:rgba(255,255,255,0.1); border-radius:999px;
+      border:1px solid var(--border); transition:all 0.25s ease;
+    }
+    .toggle-slider::before{
+      content:''; position:absolute; height:18px; width:18px;
+      left:2px; bottom:2px; background:#fff; border-radius:50%;
+      transition:all 0.25s ease; box-shadow:0 2px 6px rgba(0,0,0,0.3);
+    }
+    .toggle-switch input:checked + .toggle-slider{
+      background:var(--good); border-color:var(--good);
+    }
+    .toggle-switch input:checked + .toggle-slider::before{
+      transform:translateX(20px);
+    }
+
+    /* Modal */
+    .soar-modal-overlay{
+      position:fixed; inset:0; z-index:9999;
+      background:rgba(0,0,0,0.65); backdrop-filter:blur(6px);
+      display:none; align-items:center; justify-content:center;
+      padding:20px;
+    }
+    .soar-modal-overlay.open{ display:flex; }
+    .soar-modal{
+      background:var(--panel); border:1px solid var(--border);
+      border-radius:var(--radius); box-shadow:0 24px 80px rgba(0,0,0,0.5);
+      width:100%; max-width:640px; max-height:90vh; overflow-y:auto;
+      animation:modalSlideIn 0.25s ease;
+    }
+    @keyframes modalSlideIn{
+      from{ opacity:0; transform:translateY(20px) scale(0.97); }
+      to{ opacity:1; transform:translateY(0) scale(1); }
+    }
+    .soar-modal .modal-hdr{
+      padding:20px 24px; border-bottom:1px solid var(--border);
+      display:flex; align-items:center; justify-content:space-between;
+    }
+    .soar-modal .modal-hdr h2{ margin:0; font-size:18px; }
+    .soar-modal .modal-hdr .close-btn{
+      width:32px; height:32px; border-radius:8px; border:none;
+      background:var(--panel2); color:var(--text); cursor:pointer;
+      font-size:18px; display:flex; align-items:center; justify-content:center;
+    }
+    .soar-modal .modal-body{ padding:24px; }
+    .soar-modal .form-group{ margin-bottom:16px; }
+    .soar-modal .form-group label{
+      display:block; font-size:12px; font-weight:700;
+      color:var(--muted); text-transform:uppercase;
+      letter-spacing:0.5px; margin-bottom:6px;
+    }
+    .soar-modal .form-input{
+      width:100%; padding:10px 14px; border-radius:var(--radius-sm);
+      border:1px solid var(--border); background:var(--bg2);
+      color:var(--text); font-size:14px; outline:none;
+      transition:border-color 0.2s;
+    }
+    .soar-modal .form-input:focus{ border-color:var(--accent); }
+    .soar-modal textarea.form-input{ resize:vertical; min-height:60px; font-family:inherit; }
+
+    .multi-select-box{
+      display:flex; flex-wrap:wrap; gap:6px; padding:8px;
+      border:1px solid var(--border); border-radius:var(--radius-sm);
+      background:var(--bg2); min-height:40px;
+    }
+    .multi-select-box .ms-chip{
+      padding:4px 10px; border-radius:6px; font-size:11px; font-weight:700;
+      cursor:pointer; transition:all 0.15s ease; border:1px solid var(--border);
+      background:var(--panel2); color:var(--text2); user-select:none;
+    }
+    .multi-select-box .ms-chip.selected{
+      background:var(--accent2); border-color:var(--accent); color:var(--accent);
+    }
+    .multi-select-box .ms-chip:hover{ border-color:var(--accent); }
+
+    .action-rows{ display:flex; flex-direction:column; gap:8px; }
+    .action-row{
+      display:flex; gap:8px; align-items:center;
+      padding:8px 10px; background:var(--bg2);
+      border:1px solid var(--border); border-radius:var(--radius-sm);
+    }
+    .action-row select{
+      flex:1; padding:8px 10px; border-radius:8px;
+      border:1px solid var(--border); background:var(--panel);
+      color:var(--text); font-size:13px; outline:none; min-width:0;
+    }
+    .action-row .remove-action{
+      width:28px; height:28px; border-radius:6px; border:none;
+      background:rgba(239,68,68,0.1); color:var(--bad); cursor:pointer;
+      font-size:14px; display:flex; align-items:center; justify-content:center;
+      flex-shrink:0;
+    }
+    .add-action-btn{
+      padding:8px 14px; border-radius:8px;
+      border:1px dashed var(--border); background:transparent;
+      color:var(--muted); cursor:pointer; font-size:12px; font-weight:600;
+      transition:all 0.15s ease; width:100%;
+    }
+    .add-action-btn:hover{ border-color:var(--accent); color:var(--accent); background:var(--accent2); }
+
+    .modal-footer{
+      padding:16px 24px; border-top:1px solid var(--border);
+      display:flex; gap:10px; justify-content:flex-end;
+    }
+    .modal-footer .btn-save{
+      padding:10px 28px; border-radius:999px;
+      background:linear-gradient(135deg, #2563eb, #3b82f6);
+      color:#fff; border:none; font-weight:700; font-size:14px;
+      cursor:pointer; box-shadow:0 4px 16px rgba(37,99,235,0.3);
+    }
+    .modal-footer .btn-cancel{
+      padding:10px 20px; border-radius:999px;
+      background:var(--panel2); color:var(--text2);
+      border:1px solid var(--border); font-weight:600; font-size:14px;
+      cursor:pointer;
+    }
+
+    .pb-empty{
+      text-align:center; padding:60px 20px;
+      color:var(--muted); font-size:14px;
+    }
+    .pb-empty .pb-empty-icon{ font-size:48px; margin-bottom:12px; opacity:0.4; }
+
   </style>
 </head>
 <body>
@@ -582,9 +800,7 @@ HTML = """<!doctype html>
       <a href="#/aggregated" data-route="aggregated">Агрегированные <small id="navAgg">0</small></a>
       <a href="#/incidents" data-route="incidents">Инциденты <small id="navIncidents">0</small></a>
       <a href="#/assets" data-route="assets">Активы (CMDB) <small>Asset DB</small></a>
-      <a href="#/integrations" data-route="integrations">Интеграции <small>REST/Webhooks</small></a>
       <a href="#/reports" data-route="reports">Отчёты <small>SOC</small></a>
-      <a href="#/metrics" data-route="metrics">Метрики <small>API</small></a>
       <a href="#/simulation" data-route="simulation">Симулятор атак <small>MITRE</small></a>
       <a href="#/response" data-route="response">Реагирование <small id="navResponse">0</small></a>
       <a href="#/playbooks" data-route="playbooks">Автоматизация <small>SOAR</small></a>
@@ -715,10 +931,24 @@ HTML = """<!doctype html>
     <!-- EVENTS RAW -->
     <section id="sec-events" class="section">
       <div class="card">
-        <div class="hdr"><b>События (Raw)</b><span>если API /api/events отсутствует — покажет N/A</span></div>
-        <div class="body">
-          <div class="note">Этот раздел соответствует блоку «Хранилище сырых событий». Для UI нужен endpoint <span class="mono">GET /api/events?limit=...</span></div>
-          <pre class="mono" id="rawJson" style="margin-top:10px; background:#0b1220; color:#e5e7eb; padding:12px; border-radius:14px; overflow:auto; max-height:520px;">loading...</pre>
+        <div class="hdr">
+          <b>События (Raw)</b>
+          <span>Сырой поток входящих данных (последние 100)</span>
+        </div>
+        <div class="body table-scroll" style="padding:0">
+          <table class="tbl-fixed" style="min-width: 1400px;">
+            <thead>
+              <tr>
+                <th style="width:160px;">Time</th>
+                <th style="width:150px;">Source</th>
+                <th style="width:200px;">Event Type</th>
+                <th style="width:160px;">IP (Src/Dst)</th>
+                <th style="width:140px;">User</th>
+                <th>Raw Payload</th>
+              </tr>
+            </thead>
+            <tbody id="tblEventsRaw"></tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -925,11 +1155,46 @@ HTML = """<!doctype html>
 
     <!-- METRICS -->
     <section id="sec-metrics" class="section">
-      <div class="card">
-        <div class="hdr"><b>Метрики</b><span>GET /api/metrics</span></div>
-        <div class="body">
-          <div class="note">UI читает метрики отсюда. Если endpoint отсутствует — показывается N/A.</div>
-          <pre class="mono" id="metricsJson" style="margin-top:10px; background:#0b1220; color:#e5e7eb; padding:12px; border-radius:14px; overflow:auto; max-height:520px;">loading...</pre>
+      <div class="kpis" style="margin-bottom:14px;">
+        <div class="kpi"><div class="t">Всего активов</div><div class="v" id="metAssets">—</div><div class="s">CMDB</div></div>
+        <div class="kpi"><div class="t">Событий (Raw)</div><div class="v" id="metRaw">—</div><div class="s">Total logs</div></div>
+        <div class="kpi"><div class="t">Агрегированных</div><div class="v" id="metAgg">—</div><div class="s">Deduplicated</div></div>
+        <div class="kpi"><div class="t">Алертов</div><div class="v" id="metAlerts" style="color:var(--warn)">—</div><div class="s">Total alerts</div></div>
+        <div class="kpi"><div class="t">Инцидентов</div><div class="v" id="metInc" style="color:var(--bad)">—</div><div class="s">Total incidents</div></div>
+      </div>
+
+      <div class="grid cols-3" style="margin-bottom:14px;">
+        <div class="card">
+          <div class="hdr"><b>Топ типов событий</b></div>
+          <div class="body"><canvas id="metChartEvTypes" width="400" height="240"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="hdr"><b>Топ IP источников</b></div>
+          <div class="body"><canvas id="metChartSrcIp" width="400" height="240"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="hdr"><b>Источники (Sources)</b></div>
+          <div class="body"><canvas id="metChartSources" width="400" height="240"></canvas></div>
+        </div>
+      </div>
+      
+      <div class="grid cols-3">
+        <div class="card">
+          <div class="hdr"><b>Топы пользователей</b><span>Топ активных UserID</span></div>
+          <div class="body table-scroll" style="padding:0">
+            <table class="tbl-fixed">
+              <thead><tr><th>User / Account</th><th style="width:100px;">Событий</th></tr></thead>
+              <tbody id="tblMetUsers"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="hdr"><b>Активы по типам</b></div>
+          <div class="body"><canvas id="metChartAssetTypes" width="400" height="240"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="hdr"><b>Активы по зонам</b></div>
+          <div class="body"><canvas id="metChartAssetZones" width="400" height="240"></canvas></div>
         </div>
       </div>
     </section>
@@ -1039,33 +1304,90 @@ HTML = """<!doctype html>
               </tr>
             </thead>
             <tbody id="tblResponseActions"><tr><td colspan="8" class="muted" style="padding:14px;">Загрузка...</td></tr></tbody>
-  </main>
-
-    <!-- PLAYBOOKS -->
-    <section id="sec-playbooks" class="section">
-      <div class="card">
-        <div class="hdr"><b>SOAR Playbooks</b><span>Активные сценарии реагирования</span></div>
-        <div class="body">
-          <div class="table-scroll">
-            <table class="incidents-table tbl-fixed">
-              <thead>
-                <tr>
-                  <th style="width: 60px;">ID</th>
-                  <th style="width: 280px;">Название</th>
-                  <th style="width: 350px;">Описание</th>
-                  <th style="width: 200px;">Условие (Condition)</th>
-                  <th style="width: 200px;">Действие (Actions)</th>
-                  <th style="width: 100px;">Статус</th>
-                </tr>
-              </thead>
-              <tbody id="tblPlaybooks">
-                <tr><td colspan="6" class="muted">Загрузка...</td></tr>
-              </tbody>
-            </table>
-          </div>
+          </table>
         </div>
       </div>
     </section>
+
+    <!-- PLAYBOOKS (SOAR) -->
+    <section id="sec-playbooks" class="section">
+
+      <!-- KPI strip -->
+      <div class="soar-kpis">
+        <div class="kpi"><div class="t">Всего плейбуков</div><div class="v" id="pbKpiTotal">0</div><div class="s">SOAR rules</div></div>
+        <div class="kpi"><div class="t">Активные</div><div class="v" id="pbKpiActive" style="color:var(--good)">0</div><div class="s">enabled</div></div>
+        <div class="kpi"><div class="t">Отключённые</div><div class="v" id="pbKpiDisabled" style="color:var(--muted)">0</div><div class="s">disabled</div></div>
+        <div class="kpi"><div class="t">Действий</div><div class="v" id="pbKpiActions" style="color:var(--accent)">0</div><div class="s">total actions</div></div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="soar-toolbar">
+        <input class="search-box" id="pbSearch" placeholder="&#128269;&#xFE0E;  Поиск плейбуков по названию..." oninput="renderPlaybookCards()" />
+        <div style="display:flex;gap:10px;align-items:center;">
+          <button class="btn" onclick="loadPlaybooks()" title="Обновить">↻</button>
+          <button class="btn-create" onclick="openPlaybookModal()">＋ Создать плейбук</button>
+        </div>
+      </div>
+
+      <!-- Playbook cards -->
+      <div class="pb-grid" id="pbCardsGrid">
+        <div class="pb-empty">
+          <div class="pb-empty-icon">⚙️</div>
+          <div>Загрузка плейбуков...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Playbook Modal -->
+    <div class="soar-modal-overlay" id="pbModalOverlay" onclick="if(event.target===this)closePlaybookModal()">
+      <div class="soar-modal">
+        <div class="modal-hdr">
+          <h2 id="pbModalTitle">Новый плейбук</h2>
+          <button class="close-btn" onclick="closePlaybookModal()">✕</button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="pbModalId" value="" />
+
+          <div class="form-group">
+            <label>Название</label>
+            <input class="form-input" id="pbModalName" placeholder="Например: Изоляция при обнаружении ВПО" />
+          </div>
+          <div class="form-group">
+            <label>Описание</label>
+            <textarea class="form-input" id="pbModalDesc" placeholder="Описание логики плейбука..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>Типы инцидентов (Condition: type_in)</label>
+            <div class="multi-select-box" id="pbModalTypes"></div>
+          </div>
+          <div class="form-group">
+            <label>Severity (Condition: severity_in)</label>
+            <div class="multi-select-box" id="pbModalSevs"></div>
+          </div>
+
+          <div class="form-group">
+            <label>Действия (Actions)</label>
+            <div class="action-rows" id="pbModalActions"></div>
+            <button class="add-action-btn" onclick="addActionRow()" style="margin-top:8px;">＋ Добавить действие</button>
+          </div>
+
+          <div class="form-group" style="display:flex;align-items:center;gap:12px;">
+            <label style="margin-bottom:0;">Включён</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="pbModalEnabled" checked />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn-cancel" onclick="closePlaybookModal()">Отмена</button>
+          <button class="btn-save" onclick="savePlaybook()">Сохранить</button>
+        </div>
+      </div>
+    </div>
+
+  </main>
 
 <script>
 // ---------------------------
@@ -1907,7 +2229,39 @@ async function refresh(){
     document.getElementById('navIncidents').textContent = (m.incidents ?? 0);
     document.getElementById('navKpi').textContent = `${m.alerts ?? 0}/${m.incidents ?? 0}`;
 
-    document.getElementById('metricsJson').textContent = JSON.stringify(m, null, 2);
+    // Update specialized metrics tab
+    document.getElementById('metAssets').textContent = (m.cmdb?.assets_count ?? '—');
+    document.getElementById('metRaw').textContent = (m.events_raw ?? '—');
+    document.getElementById('metAgg').textContent = (m.events_aggregated ?? '—');
+    document.getElementById('metAlerts').textContent = (m.alerts ?? '—');
+    document.getElementById('metInc').textContent = (m.incidents ?? '—');
+    
+    if (m.tops?.event_types) {
+      drawBars(document.getElementById('metChartEvTypes'), m.tops.event_types.map(x => ({k: String(x.key), v: x.count})));
+    }
+    if (m.tops?.src_ip) {
+      drawBars(document.getElementById('metChartSrcIp'), m.tops.src_ip.map(x => ({k: String(x.key), v: x.count})));
+    }
+    if (m.by_source) {
+      const entries = Object.entries(m.by_source).filter(x => x[1] > 0);
+      if(entries.length) drawDonut(document.getElementById('metChartSources'), entries, 'Источники');
+    }
+    if (m.cmdb?.by_type) {
+      const entries = Object.entries(m.cmdb.by_type).filter(x => x[1] > 0);
+      if(entries.length) drawDonut(document.getElementById('metChartAssetTypes'), entries, 'Типы активов');
+    }
+    if (m.cmdb?.by_zone) {
+      const entries = Object.entries(m.cmdb.by_zone).filter(x => x[1] > 0);
+      if(entries.length) drawDonut(document.getElementById('metChartAssetZones'), entries, 'Зоны');
+    }
+    const tblUsers = document.getElementById('tblMetUsers');
+    if (tblUsers) {
+      if (m.tops?.users && m.tops.users.length > 0) {
+        tblUsers.innerHTML = m.tops.users.map(u => `<tr><td class="mono" style="font-weight:600">${esc(u.key)}</td><td class="mono">${u.count}</td></tr>`).join('');
+      } else {
+        tblUsers.innerHTML = '<tr><td colspan="2" class="muted" style="padding:14px; text-align:center;">Нет активности</td></tr>';
+      }
+    }
 
     // Per-source counters (Источники)
     const bs = (m.by_source || {});
@@ -1926,7 +2280,6 @@ async function refresh(){
     document.getElementById('kpiRaw').textContent = 'N/A';
     document.getElementById('kpiAgg').textContent = 'N/A';
     document.getElementById('kpiSys').textContent = 'N/A';
-    document.getElementById('metricsJson').textContent = 'N/A (endpoint /api/metrics не найден)';
   }
 
   // Alerts
@@ -1963,9 +2316,34 @@ async function refresh(){
     }
   }
 
-  // Raw events (optional)
-  const ev = await safeJson('/api/events?limit=50');
-  document.getElementById('rawJson').textContent = ev ? JSON.stringify(ev, null, 2) : 'N/A (endpoint /api/events не найден)';
+  // Raw events
+  const ev = await safeJson('/api/events?limit=100');
+  const evItems = ev && ev.items ? ev.items : [];
+  const tbEv = document.getElementById('tblEventsRaw');
+  if (tbEv) {
+    tbEv.innerHTML = '';
+    if (evItems.length === 0) {
+      tbEv.innerHTML = '<tr><td colspan="6" class="muted" style="padding:14px; text-align:center;">Сырые события не найдены</td></tr>';
+    } else {
+      for (const e of evItems) {
+        let ips = [];
+        if (e.src_ip) ips.push(e.src_ip);
+        if (e.dst_ip) ips.push(e.dst_ip);
+        const ipStr = ips.length ? ips.join(' ➔ ') : '—';
+        
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td class="mono" style="font-size:11px;">${fmtTime(e.received_at)}</td>
+          <td class="mono muted">${esc(e.source || e.source_type || '—')}</td>
+          <td class="mono" style="font-weight:600;color:var(--accent);">${esc(e.event_type || '—')}</td>
+          <td class="mono">${esc(ipStr)}</td>
+          <td class="mono">${esc(e.user || '—')}</td>
+          <td class="mono muted" style="font-size:11px; max-width:400px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(JSON.stringify(e))}">${esc(JSON.stringify(e))}</td>
+        `;
+        tbEv.appendChild(row);
+      }
+    }
+  }
 
   // Asset DB (CMDB) — loaded lazily, rendered by renderAssets()
   window._assetData = null;
@@ -2056,53 +2434,113 @@ async function refresh(){
 }
 
 // ---------------------------
-// SOAR Playbooks
+// SOAR Playbooks — Full CRUD UI
 // ---------------------------
+
+// Catalog of known incident types for the multi-select
+const INCIDENT_TYPES = [
+  'BRUTEFORCE_VPN','PORT_SCAN','IAM_PASSWORD_SPRAY','ENDPOINT_BRUTEFORCE',
+  'MALWARE_DETECTED','AV_TAMPER','AV_CLEAN_FAILED','RANSOMWARE_BEHAVIOR',
+  'CREDENTIAL_DUMP','LATERAL_MOVEMENT','EDR_LATERAL_ACTIVITY','SUSPICIOUS_PROCESS',
+  'VPN_BRUTE_CHAIN','VPN_COMPROMISE','ENCODED_POWERSHELL','SERVICE_CREATION',
+  'IAM_ADMIN_GROUP_CHANGE'
+];
+const SEVERITY_LEVELS = ['critical','high','medium','low'];
+
+let _playbookData = [];
+
 async function loadPlaybooks(){
   const resp = await safeJson('/api/playbooks/');
-  const items = resp ? (resp.items || resp.playbooks || []) : [];
-  const tb = document.getElementById('tblPlaybooks');
-  if(!tb) return;
-  tb.innerHTML = '';
+  _playbookData = resp ? (resp.items || resp.playbooks || []) : [];
+  renderPlaybookCards();
+}
+
+function renderPlaybookCards(){
+  const grid = document.getElementById('pbCardsGrid');
+  if(!grid) return;
+
+  const q = (document.getElementById('pbSearch')?.value || '').toLowerCase();
+  let items = _playbookData;
+  if(q) items = items.filter(pb => (pb.name||'').toLowerCase().includes(q) || (pb.description||'').toLowerCase().includes(q) || (pb.id||'').toLowerCase().includes(q));
+
+  // KPI
+  const total = _playbookData.length;
+  const active = _playbookData.filter(p=>p.enabled).length;
+  const disabled = total - active;
+  const totalActions = _playbookData.reduce((s,p)=>(s+(p.actions||[]).length),0);
+  const el = id => document.getElementById(id);
+  if(el('pbKpiTotal')) el('pbKpiTotal').textContent = total;
+  if(el('pbKpiActive')) el('pbKpiActive').textContent = active;
+  if(el('pbKpiDisabled')) el('pbKpiDisabled').textContent = disabled;
+  if(el('pbKpiActions')) el('pbKpiActions').textContent = totalActions;
+
+  grid.innerHTML = '';
+
   if(items.length === 0){
-    tb.innerHTML = '<tr><td colspan="6" class="muted" style="padding:14px">Нет плейбуков</td></tr>';
+    grid.innerHTML = `<div class="pb-empty"><div class="pb-empty-icon">⚙️</div><div>${total===0?'Нет плейбуков. Создайте первый!':'Ничего не найдено'}</div></div>`;
     return;
   }
-  
+
   for(const pb of items){
-    const row = document.createElement('tr');
-    
-    // Форматирование условий
     const cond = pb.condition || {};
-    let condHtml = '';
-    if(cond.type_in && cond.type_in.length) condHtml += `<div class="mono muted">Types: ${cond.type_in.join(', ')}</div>`;
-    if(cond.severity_in && cond.severity_in.length) condHtml += `<div class="subcell">Sev: ${cond.severity_in.join(', ')}</div>`;
-    
-    // Форматирование действий
+    const types = cond.type_in || [];
+    const sevs = cond.severity_in || [];
     const acts = pb.actions || [];
-    const actsHtml = acts.map(a => `<div class="mono" style="color:var(--accent)">${a.type} -> ${a.target_field}</div>`).join('');
-    
-    // Переключатель статуса
-    const checked = pb.enabled ? 'checked' : '';
-    const statusHtml = `
-      <label style="display:flex;align-items:center;cursor:pointer;gap:8px;">
-        <input type="checkbox" onchange="togglePlaybook('${esc(pb.id)}', this.checked)" ${checked}> 
-        <span style="font-weight:600; color:${pb.enabled ? 'var(--good)' : 'var(--muted)'}">${pb.enabled ? 'Active' : 'Disabled'}</span>
-      </label>
+
+    const typesHtml = types.length
+      ? types.map(t=>`<span class="pb-chip cond-type">${esc(t)}</span>`).join('')
+      : '<span style="color:var(--muted);font-size:11px;">Любой тип</span>';
+    const sevsHtml = sevs.length
+      ? sevs.map(s=>`<span class="pb-chip cond-sev">${esc(s)}</span>`).join('')
+      : '<span style="color:var(--muted);font-size:11px;">Любой</span>';
+
+    const actionIcons = {block_ip:'🚫', isolate_host:'🔒', disable_user:'👤'};
+    const actionClasses = {block_ip:'act-block', isolate_host:'act-isolate', disable_user:'act-disable'};
+    const actsHtml = acts.length
+      ? acts.map(a=>`<span class="pb-chip ${actionClasses[a.type]||''}">${actionIcons[a.type]||''} ${esc(a.type)} → ${esc(a.target_field)}</span>`).join('')
+      : '<span style="color:var(--muted);font-size:11px;">Нет действий</span>';
+
+    const card = document.createElement('div');
+    card.className = 'pb-card' + (pb.enabled ? '' : ' disabled');
+    card.innerHTML = `
+      <div class="pb-header">
+        <div>
+          <div class="pb-title">${esc(pb.name)}</div>
+          <div class="pb-id">${esc(pb.id)}</div>
+        </div>
+        <label class="toggle-switch" title="${pb.enabled?'Выключить':'Включить'}">
+          <input type="checkbox" ${pb.enabled?'checked':''} onchange="togglePlaybook('${esc(pb.id)}',this.checked)" />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="pb-body">
+        <div class="pb-desc">${esc(pb.description || 'Без описания')}</div>
+        <div class="pb-flow">
+          <div class="pb-flow-col">
+            <div class="pb-flow-label">IF условие</div>
+            <div>${typesHtml}</div>
+            <div style="margin-top:4px;">${sevsHtml}</div>
+          </div>
+          <div class="pb-flow-arrow">→</div>
+          <div class="pb-flow-col">
+            <div class="pb-flow-label">THEN действия</div>
+            <div>${actsHtml}</div>
+          </div>
+        </div>
+      </div>
+      <div class="pb-footer">
+        <div style="font-size:11px;color:var(--muted);">${pb.enabled?'<span style="color:var(--good);font-weight:700;">● Active</span>':'<span>○ Disabled</span>'}</div>
+        <div class="pb-actions">
+          <button onclick="openPlaybookModal('${esc(pb.id)}')">✏️ Изменить</button>
+          <button class="del" onclick="deletePlaybook('${esc(pb.id)}','${esc(pb.name)}')">🗑 Удалить</button>
+        </div>
+      </div>
     `;
-    
-    row.innerHTML = `
-      <td class="mono muted">${esc(pb.id)}</td>
-      <td style="font-weight:600">${esc(pb.name)}</td>
-      <td>${esc(pb.description || '')}</td>
-      <td>${condHtml}</td>
-      <td>${actsHtml}</td>
-      <td>${statusHtml}</td>
-    `;
-    tb.appendChild(row);
+    grid.appendChild(card);
   }
 }
 
+// --- Toggle ---
 window.togglePlaybook = async function(id, state){
   try{
     const r = await fetch('/api/playbooks/' + encodeURIComponent(id), {
@@ -2111,13 +2549,140 @@ window.togglePlaybook = async function(id, state){
       body: JSON.stringify({enabled: state})
     });
     if(!r.ok) throw new Error('HTTP ' + r.status);
-    setStatus('Playbook updated', 'ok');
-    loadPlaybooks();
+    setStatus('Плейбук обновлён', 'ok');
+    await loadPlaybooks();
   }catch(e){
-    setStatus('Failed to update playbook', 'bad');
-    loadPlaybooks(); // revert visually
+    setStatus('Ошибка обновления плейбука', 'bad');
+    await loadPlaybooks();
   }
 };
+
+// --- Delete ---
+window.deletePlaybook = async function(id, name){
+  if(!confirm(`Удалить плейбук «${name}»?`)) return;
+  try{
+    const r = await fetch('/api/playbooks/' + encodeURIComponent(id), {method:'DELETE'});
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    setStatus('Плейбук удалён', 'ok');
+    await loadPlaybooks();
+  }catch(e){
+    setStatus('Ошибка удаления', 'bad');
+  }
+};
+
+// --- Modal ---
+function _renderMultiSelect(containerId, options, selected){
+  const box = document.getElementById(containerId);
+  if(!box) return;
+  box.innerHTML = '';
+  for(const opt of options){
+    const chip = document.createElement('span');
+    chip.className = 'ms-chip' + (selected.includes(opt) ? ' selected' : '');
+    chip.textContent = opt;
+    chip.onclick = ()=>{ chip.classList.toggle('selected'); };
+    box.appendChild(chip);
+  }
+}
+
+function _getMultiSelectValues(containerId){
+  const box = document.getElementById(containerId);
+  if(!box) return [];
+  return Array.from(box.querySelectorAll('.ms-chip.selected')).map(c=>c.textContent);
+}
+
+function addActionRow(type, target){
+  const container = document.getElementById('pbModalActions');
+  const row = document.createElement('div');
+  row.className = 'action-row';
+  row.innerHTML = `
+    <select class="act-type">
+      <option value="block_ip" ${type==='block_ip'?'selected':''}>🚫 block_ip</option>
+      <option value="isolate_host" ${type==='isolate_host'?'selected':''}>🔒 isolate_host</option>
+      <option value="disable_user" ${type==='disable_user'?'selected':''}>👤 disable_user</option>
+    </select>
+    <select class="act-target">
+      <option value="src_ip" ${target==='src_ip'?'selected':''}>src_ip</option>
+      <option value="host" ${target==='host'?'selected':''}>host</option>
+      <option value="user" ${target==='user'?'selected':''}>user</option>
+    </select>
+    <button class="remove-action" onclick="this.parentElement.remove()">✕</button>`;
+  container.appendChild(row);
+}
+
+function openPlaybookModal(editId){
+  const pb = editId ? _playbookData.find(p=>p.id===editId) : null;
+  document.getElementById('pbModalId').value = pb ? pb.id : '';
+  document.getElementById('pbModalTitle').textContent = pb ? 'Редактировать плейбук' : 'Новый плейбук';
+  document.getElementById('pbModalName').value = pb ? pb.name : '';
+  document.getElementById('pbModalDesc').value = pb ? (pb.description||'') : '';
+  document.getElementById('pbModalEnabled').checked = pb ? pb.enabled : true;
+
+  const cond = pb ? (pb.condition||{}) : {};
+  _renderMultiSelect('pbModalTypes', INCIDENT_TYPES, cond.type_in || []);
+  _renderMultiSelect('pbModalSevs', SEVERITY_LEVELS, (cond.severity_in||[]).map(s=>s.toLowerCase()));
+
+  const actContainer = document.getElementById('pbModalActions');
+  actContainer.innerHTML = '';
+  if(pb && pb.actions){
+    for(const a of pb.actions) addActionRow(a.type, a.target_field);
+  }
+
+  document.getElementById('pbModalOverlay').classList.add('open');
+}
+
+function closePlaybookModal(){
+  document.getElementById('pbModalOverlay').classList.remove('open');
+}
+
+async function savePlaybook(){
+  const id = document.getElementById('pbModalId').value;
+  const name = document.getElementById('pbModalName').value.trim();
+  if(!name){ alert('Введите название плейбука'); return; }
+  const description = document.getElementById('pbModalDesc').value.trim();
+  const enabled = document.getElementById('pbModalEnabled').checked;
+  const type_in = _getMultiSelectValues('pbModalTypes');
+  const severity_in = _getMultiSelectValues('pbModalSevs');
+
+  const actionRows = document.querySelectorAll('#pbModalActions .action-row');
+  const actions = [];
+  for(const row of actionRows){
+    const t = row.querySelector('.act-type').value;
+    const tf = row.querySelector('.act-target').value;
+    actions.push({type:t, target_field:tf});
+  }
+
+  const payload = {
+    name, description, enabled,
+    condition: {type_in, severity_in},
+    actions
+  };
+
+  try{
+    let url, method;
+    if(id){
+      url = '/api/playbooks/' + encodeURIComponent(id);
+      method = 'PUT';
+    } else {
+      url = '/api/playbooks/';
+      method = 'POST';
+    }
+    const r = await fetch(url, {
+      method,
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
+    });
+    if(!r.ok){
+      const err = await r.json().catch(()=>({}));
+      throw new Error(err.detail || 'HTTP ' + r.status);
+    }
+    setStatus(id ? 'Плейбук обновлён' : 'Плейбук создан', 'ok');
+    closePlaybookModal();
+    await loadPlaybooks();
+  }catch(e){
+    alert('Ошибка: ' + e.message);
+    setStatus('Ошибка сохранения плейбука', 'bad');
+  }
+}
 
 // ---------------------------
 // Active Response functions
@@ -2453,8 +3018,14 @@ setRoute(currentRoute());
 setStatus('Operational', 'ok');
 renderCorrelationGraph();
 window.onresize = renderCorrelationGraph;
+loadPlaybooks();
 refresh();
 setInterval(refresh, 2500);
+
+// Reload playbooks when navigating to the tab
+window.addEventListener('hashchange', ()=>{
+  if(currentRoute() === 'playbooks') loadPlaybooks();
+});
 </script>
 </body>
 </html>"""
